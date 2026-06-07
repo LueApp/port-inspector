@@ -113,6 +113,11 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .port-form input { width: 76px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--ink); font: inherit; font-variant-numeric: tabular-nums; }
 .port-form input:focus { outline: 2px solid color-mix(in srgb, var(--brand) 45%, transparent); outline-offset: 1px; border-color: var(--brand); }
 
+.lang { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); padding-left: 9px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: var(--shadow-sm); }
+.lang svg { flex: none; opacity: 0.8; }
+.lang select { border: none; background: none; color: var(--ink); font: inherit; font-weight: 600; padding: 8px 8px 8px 2px; cursor: pointer; }
+.lang select:focus { outline: 2px solid color-mix(in srgb, var(--brand) 40%, transparent); border-radius: 6px; }
+
 .btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 8px 13px; border: 1px solid var(--border-strong); border-radius: 9px;
@@ -259,8 +264,11 @@ tr.exposed td.addr { color: var(--c-danger); font-weight: 700; }
 .card h2 { font-size: 1rem; margin: 0; }
 .card .muted { color: var(--muted); margin: 0 0 12px; line-height: 1.55; }
 .card .small { font-size: 0.84rem; margin-bottom: 0; }
-.card code { background: var(--surface-3); padding: 1px 6px; border-radius: 5px; }
+/* inline code in prose only — must NOT match the <code> inside command <pre> */
+.card p code { background: var(--surface-3); padding: 1px 6px; border-radius: 5px; }
 .card .muted code, .card .small code { color: var(--ink); }
+/* command-block code inherits the dark <pre> colours, never a light box */
+.cmd pre code { background: none; padding: 0; border-radius: 0; color: inherit; }
 
 .cmd { position: relative; }
 .cmd pre { background: #0d1322; color: #d8e1f4; border-radius: 9px; padding: 13px 15px; margin: 0 0 8px; overflow-x: auto; font-family: var(--mono); font-size: 0.8rem; line-height: 1.55; border: 1px solid #1b2436; }
