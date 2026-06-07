@@ -1,0 +1,13 @@
+# Cloudflare Pages / static-host security + caching headers.
+
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+/styles.css
+  Cache-Control: public, max-age=600
+
+/app.js
+  Cache-Control: public, max-age=600

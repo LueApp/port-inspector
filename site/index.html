@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>portscope — local port dashboard</title>
+  <meta name="description" content="A dashboard for what's listening on your machine's ports. Reads a small local read-only agent over localhost; shows setup guidance when the agent isn't running." />
+  <meta name="color-scheme" content="light dark" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>
+        </span>
+        <span class="brand-text">
+          <span class="brand-name">portscope</span>
+          <span class="brand-sub">local port dashboard</span>
+        </span>
+        <span id="badge" class="badge checking"><span class="badge-dot"></span><span class="badge-text">checking…</span></span>
+      </div>
+      <div class="controls">
+        <form id="port-form" class="port-form" autocomplete="off">
+          <label for="port-input">Agent port</label>
+          <input id="port-input" type="number" min="1" max="65535" step="1" inputmode="numeric" value="8790" />
+          <button class="btn" type="submit">Apply</button>
+        </form>
+        <button id="refresh-btn" class="btn icon-btn" type="button" title="Refresh now" hidden>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+          <span>Refresh</span>
+        </button>
+        <label id="auto-wrap" class="switch" hidden title="Auto-refresh every 5s">
+          <input id="auto-toggle" type="checkbox" checked />
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span class="switch-label">Auto</span>
+        </label>
+        <button id="retry-btn" class="btn primary" type="button" hidden>Retry</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- ============ DASHBOARD (agent reachable) ============ -->
+      <section id="dashboard" hidden>
+        <div class="stats" id="stats">
+          <article class="stat" data-accent="indigo">
+            <span class="stat-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h4l3 8 4-16 3 8h2"/></svg></span>
+            <span class="stat-body"><span class="stat-label">Listeners</span><strong id="s-total">—</strong></span>
+          </article>
+          <article class="stat" data-accent="blue">
+            <span class="stat-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg></span>
+            <span class="stat-body"><span class="stat-label">TCP</span><strong id="s-tcp">—</strong></span>
+          </article>
+          <article class="stat" data-accent="violet">
+            <span class="stat-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6"/><path d="M6 7l6 5 6-5"/><path d="M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6"/></svg></span>
+            <span class="stat-body"><span class="stat-label">UDP</span><strong id="s-udp">—</strong></span>
+          </article>
+          <article class="stat" data-accent="slate">
+            <span class="stat-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg></span>
+            <span class="stat-body"><span class="stat-label">Processes</span><strong id="s-procs">—</strong></span>
+          </article>
+          <article class="stat" data-accent="teal">
+            <span class="stat-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 7 21"/><path d="M17 3l-2 18"/><path d="M3 8h18"/><path d="M3 16h18"/></svg></span>
+            <span class="stat-body"><span class="stat-label">Unique ports</span><strong id="s-ports">—</strong></span>
+          </article>
+          <article class="stat" id="stat-exposed" data-accent="danger">
+            <span class="stat-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg></span>
+            <span class="stat-body"><span class="stat-label">Exposed</span><strong id="s-exposed">—</strong></span>
+          </article>
+          <article class="stat free" data-accent="green">
+            <span class="stat-body wide">
+              <span class="stat-label">Suggested free ports</span>
+              <span id="s-free" class="free-ports">—</span>
+            </span>
+          </article>
+        </div>
+
+        <div id="exposed-alert" class="alert" hidden>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.8 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.8a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+          <span id="exposed-alert-text"></span>
+        </div>
+
+        <div class="table-toolbar">
+          <div class="search-wrap">
+            <svg class="search-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            <input id="search" class="search" type="search" placeholder="Search address, port, process, command, user…" />
+          </div>
+          <div class="filters">
+            <select id="filter-proto" aria-label="Filter by protocol">
+              <option value="">All protocols</option>
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
+            <select id="filter-scope" aria-label="Filter by scope">
+              <option value="">All scopes</option>
+              <option value="loopback">Loopback</option>
+              <option value="all interfaces">All interfaces</option>
+              <option value="private">Private</option>
+              <option value="multicast">Multicast</option>
+              <option value="specific">Specific</option>
+            </select>
+            <label class="chk"><input id="filter-exposed" type="checkbox" /><span>Exposed only</span></label>
+            <span id="row-count" class="row-count"></span>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="table-wrap">
+            <table class="ports-table" id="ports-table">
+              <thead>
+                <tr>
+                  <th class="col-status" aria-label="status"></th>
+                  <th data-sort="protocol" class="sortable">Proto</th>
+                  <th data-sort="address" class="sortable">Address</th>
+                  <th data-sort="port" class="sortable num">Port</th>
+                  <th data-sort="scope" class="sortable">Scope</th>
+                  <th data-sort="pid" class="sortable num">PID</th>
+                  <th data-sort="process" class="sortable">Process</th>
+                  <th data-sort="user" class="sortable">User</th>
+                  <th data-sort="command" class="sortable">Command</th>
+                  <th data-sort="container_id" class="sortable">Container</th>
+                </tr>
+              </thead>
+              <tbody id="ports-body"></tbody>
+            </table>
+            <div id="table-empty" class="table-empty" hidden>No sockets match the current filters.</div>
+          </div>
+        </div>
+        <p class="footnote" id="footnote"></p>
+      </section>
+
+      <!-- ============ SETUP (agent not reachable) ============ -->
+      <section id="setup">
+        <div class="setup-head">
+          <p class="eyebrow" id="setup-eyebrow"><span class="eyebrow-dot"></span>Local service not detected</p>
+          <h1>Run the portscope agent to see your ports here.</h1>
+          <p class="lead">
+            A website on its own cannot read your machine's open ports — the browser sandbox forbids it.
+            portscope ships a tiny <strong>read-only</strong> agent that listens on
+            <code id="probe-target">127.0.0.1:8790</code> and serves the port list as JSON. This page reads
+            that agent directly from your browser. Start it once and this page becomes a live dashboard.
+          </p>
+          <div class="button-row">
+            <button id="setup-retry" class="btn primary" type="button">I started it — retry</button>
+            <a class="btn" href="https://github.com/LueApp/portscope" target="_blank" rel="noopener noreferrer">View source</a>
+          </div>
+        </div>
+
+        <div class="setup-grid">
+          <article class="card">
+            <div class="card-head"><span class="card-badge step">1</span><h2>Quick start (no install)</h2></div>
+            <p class="muted">Pure Python standard library — no dependencies to install.</p>
+            <div class="cmd"><pre><code id="cmd-quick"></code></pre><button class="copy" type="button" data-copy="cmd-quick" aria-label="Copy command">Copy</button></div>
+            <p class="muted small">Leave it running in a terminal. The dashboard appears here automatically once it responds.</p>
+          </article>
+
+          <article class="card">
+            <div class="card-head"><span class="card-badge step">2</span><h2>Install as a service</h2></div>
+            <p class="muted">Sets up a systemd <em>user</em> service that starts at login.</p>
+            <div class="cmd"><pre><code id="cmd-install"></code></pre><button class="copy" type="button" data-copy="cmd-install" aria-label="Copy command">Copy</button></div>
+            <p class="muted small">The installer binds the agent to <code>127.0.0.1</code> and allowlists this page's origin for CORS.</p>
+          </article>
+
+          <article class="card">
+            <div class="card-head"><span class="card-badge">↻</span><h2>Manage the service</h2></div>
+            <div class="cmd"><pre><code id="cmd-manage">systemctl --user enable --now portscope.service
+systemctl --user status portscope.service
+journalctl --user -u portscope -f</code></pre><button class="copy" type="button" data-copy="cmd-manage" aria-label="Copy commands">Copy</button></div>
+            <p class="muted small">Stop with <code>systemctl --user disable --now portscope.service</code>.</p>
+          </article>
+
+          <article class="card">
+            <div class="card-head"><span class="card-badge">⚙</span><h2>Change the port</h2></div>
+            <p class="muted">
+              The agent defaults to <code>8790</code>. To run it on a different port, start it with
+              <code id="cmd-env-port">PORTSCOPE_PORT=8790</code> (this updates to match the
+              <strong>Agent port</strong> field above), then set the same number in that field and click Apply.
+            </p>
+            <p class="muted small">
+              Your chosen port is remembered in this browser. The agent is read-only — it exposes JSON only and
+              never runs commands.
+            </p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="appfoot">
+      <span>portscope · local read-only port dashboard</span>
+      <span id="conn-detail" class="muted"></span>
+    </footer>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

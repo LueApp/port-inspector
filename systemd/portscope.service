@@ -1,0 +1,32 @@
+[Unit]
+Description=portscope - local read-only port dashboard agent
+Documentation=https://github.com/LueApp/portscope
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=__PYTHON__ -m portscope.app
+WorkingDirectory=__INSTALL_DIR__
+Restart=on-failure
+RestartSec=5
+
+Environment=PORTSCOPE_HOST=127.0.0.1
+Environment=PORTSCOPE_PORT=__PORTSCOPE_PORT__
+Environment=PORTSCOPE_PUBLIC_SITE=__PORTSCOPE_PUBLIC_SITE__
+Environment=PORTSCOPE_ALLOWED_ORIGINS=__PORTSCOPE_ALLOWED_ORIGINS__
+
+# Read-only agent: lock the service down. It only reads /proc and binds a
+# loopback socket — it needs no write access, no new privileges, and no
+# network beyond localhost.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=default.target

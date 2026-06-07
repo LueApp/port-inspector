@@ -1,0 +1,5 @@
+# portscope agent uses the Python standard library only — nothing to install.
+# Python 3.7+ is required (dataclasses, f-strings, ipaddress, socket.inet_ntop).
+#
+# This file exists so tooling that expects it doesn't choke. There are no
+# third-party runtime dependencies.
