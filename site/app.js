@@ -8,6 +8,14 @@
   const LANG_KEY = "portscope.lang";
   const REFRESH_MS = 5000;
   const TIMEOUT_MS = 2500;
+  const W2L_PORT_KEY = "portscope.w2lPort";
+  const W2L_DEFAULT_PORT = 7878;
+  // The single-file agent web2local deploys. AGENT_SHA256 MUST equal the
+  // sha256 of site/agent.py — web2local's /deploy rejects a content/hash
+  // mismatch. smoke_test.py enforces this so the two can't silently drift.
+  const AGENT_URL = "agent.py";                 // served from this origin
+  const AGENT_FILENAME = "portscope-agent.py";  // on-disk name web2local writes
+  const AGENT_SHA256 = "cbe4e0bb0058e3a9e1a1c1f2965657fa7c3df572db9b43a6afea16f493ace2cd";
 
   // ---------- translations ----------
   const translations = {
@@ -55,22 +63,12 @@
         "that agent directly from your browser. Start it once and this page becomes a live dashboard.",
       setupRetry: "I started it — retry",
       viewSource: "View source",
-      card1Title: "Quick start (no install)",
-      card1Body: "Pure Python standard library — no dependencies to install.",
-      card1Note: "Leave it running in a terminal. The dashboard appears here automatically once it responds.",
-      card2Title: "Install as a service",
-      card2Body: "Sets up a systemd user service that starts at login.",
-      card2Note: "The installer binds the agent to <code>127.0.0.1</code> and allowlists this page's origin for CORS.",
-      card3Title: "Manage the service",
-      card3Note: "Stop with <code>systemctl --user disable --now portscope.service</code>.",
-      card4Title: "Change the port",
-      card4Body:
-        "The agent defaults to <code>8790</code>. To run it on a different port, start it with " +
-        '<code id="cmd-env-port">PORTSCOPE_PORT=8790</code> (this updates to match the ' +
-        "<strong>Agent port</strong> field above), then set the same number in that field and click Apply.",
-      card4Note:
-        "Your chosen port is remembered in this browser. The agent is read-only — it exposes JSON only and " +
-        "never runs commands.",
+      manualTitle: "Run it yourself (no web2local)",
+      manualBody:
+        "No web2local? Download the agent and run it — pure Python standard library, nothing to install. " +
+        "Set the <strong>Agent port</strong> above to match.",
+      manualNote:
+        "It binds <code>127.0.0.1</code> only and is read-only — JSON, no command execution. Stop it with Ctrl-C.",
       copy: "Copy",
       copied: "Copied",
       footerText: "portscope · local read-only port dashboard",
@@ -91,6 +89,42 @@
         "PID/process. Rows on 0.0.0.0 or :: are reachable from outside this machine.",
       dotExposed: "reachable off-host",
       dotLocal: "local only",
+      w2lTitle: "Start with web2local",
+      w2lBody:
+        'Running <a href="https://web2local-bridge.lue-app.com/" target="_blank" rel="noopener noreferrer">web2local</a>? ' +
+        "Start the agent from here — no terminal, no install. web2local writes the agent and asks you to approve running it.",
+      w2lPortLabel: "web2local port",
+      w2lRecheck: "Check",
+      w2lStart: "Start agent",
+      w2lStop: "Stop agent",
+      w2lGet: "Get web2local ↗",
+      w2lChecking: "checking…",
+      w2lWorking: "working…",
+      w2lDetected: "detected",
+      w2lAbsent: "not detected",
+      w2lRunningChip: "agent running",
+      w2lHintIdle:
+        "web2local writes + runs the read-only agent and tracks it; Stop ends it. You approve the write + run first.",
+      w2lHintAbsent:
+        "Not detected on port {port}. Start web2local, or set its port above and click Check.",
+      w2lAlreadyRunning: "An agent is already running via web2local (pid {pid}).",
+      w2lApprove: "Approve writing + running the agent in web2local's dialog…",
+      w2lStarting: "Agent started — connecting…",
+      w2lTimeout:
+        "Agent started but hasn't answered yet. Check the log below, or that the Agent port above matches.",
+      w2lDenied: "Start was denied in web2local.",
+      w2lApprovalTimeout:
+        "Timed out waiting for approval in web2local. Approve faster, or click Start agent again.",
+      w2lOpaqueOrigin:
+        "Open this dashboard over http(s) from a real origin to use web2local — it can't start the agent from a file:// page.",
+      w2lHashMismatch:
+        "The agent served here doesn't match its expected hash — the site may be mid-deploy. Reload and try again.",
+      w2lNoPython:
+        "web2local couldn't find python3 to run the agent. Install Python 3 (3.7+) and restart web2local.",
+      w2lOriginRejected: "web2local rejected this origin. Reload the page and try again.",
+      w2lFetchFailed: "Couldn't load the agent from this site. Reload and try again.",
+      w2lStopped: "Agent stopped.",
+      w2lError: "web2local error: {msg}",
     },
     zh: {
       metaTitle: "portscope — 本地端口面板",
@@ -136,20 +170,12 @@
         "读取该代理。启动一次后，本页面即成为实时面板。",
       setupRetry: "已启动，重试",
       viewSource: "查看源码",
-      card1Title: "快速开始（免安装）",
-      card1Body: "纯 Python 标准库——无需安装任何依赖。",
-      card1Note: "在终端中保持运行。代理响应后，面板会自动出现在这里。",
-      card2Title: "安装为服务",
-      card2Body: "创建一个开机自启的 systemd 用户服务。",
-      card2Note: "安装器会将代理绑定到 <code>127.0.0.1</code>，并把本页面来源加入 CORS 允许列表。",
-      card3Title: "管理服务",
-      card3Note: "停止：<code>systemctl --user disable --now portscope.service</code>。",
-      card4Title: "更改端口",
-      card4Body:
-        "代理默认使用 <code>8790</code>。如需使用其他端口，请以 " +
-        '<code id="cmd-env-port">PORTSCOPE_PORT=8790</code> 启动（此处会与上方的' +
-        "<strong>代理端口</strong>同步），然后在该输入框填入相同端口并点击应用。",
-      card4Note: "你选择的端口会记录在此浏览器中。代理为只读——只提供 JSON，绝不执行任何命令。",
+      manualTitle: "自行运行（无需 web2local）",
+      manualBody:
+        "没有 web2local？下载代理并运行——纯 Python 标准库，无需安装。请将上方的" +
+        "<strong>代理端口</strong>设为一致。",
+      manualNote:
+        "它仅绑定 <code>127.0.0.1</code>，且为只读——只提供 JSON，不执行任何命令。按 Ctrl-C 停止。",
       copy: "复制",
       copied: "已复制",
       footerText: "portscope · 本地只读端口面板",
@@ -169,6 +195,35 @@
         "绑定到 0.0.0.0 或 :: 的行可从外部访问。",
       dotExposed: "可从外部访问",
       dotLocal: "仅本机",
+      w2lTitle: "用 web2local 启动",
+      w2lBody:
+        '正在运行 <a href="https://web2local-bridge.lue-app.com/" target="_blank" rel="noopener noreferrer">web2local</a>？' +
+        "可直接从这里启动代理——无需终端、无需安装。web2local 会写入代理并请你确认运行。",
+      w2lPortLabel: "web2local 端口",
+      w2lRecheck: "检查",
+      w2lStart: "启动代理",
+      w2lStop: "停止代理",
+      w2lGet: "获取 web2local ↗",
+      w2lChecking: "检查中…",
+      w2lWorking: "处理中…",
+      w2lDetected: "已检测到",
+      w2lAbsent: "未检测到",
+      w2lRunningChip: "代理运行中",
+      w2lHintIdle: "web2local 会写入并运行这个只读代理并进行管理；点击停止即可结束。运行前需先确认写入与运行。",
+      w2lHintAbsent: "未在端口 {port} 检测到。请启动 web2local，或在上方填写其端口后点击检查。",
+      w2lAlreadyRunning: "已有代理通过 web2local 运行（pid {pid}）。",
+      w2lApprove: "请在 web2local 的对话框中确认写入并运行代理…",
+      w2lStarting: "代理已启动——正在连接…",
+      w2lTimeout: "代理已启动但尚无响应。请查看下方日志，或确认上方的代理端口是否一致。",
+      w2lDenied: "已在 web2local 中拒绝启动。",
+      w2lApprovalTimeout: "等待 web2local 确认超时。请尽快确认，或再次点击启动代理。",
+      w2lOpaqueOrigin: "请通过 http(s) 从真实来源打开此面板才能使用 web2local；file:// 页面无法启动代理。",
+      w2lHashMismatch: "此处提供的代理与预期哈希不匹配——站点可能正在部署。请刷新后重试。",
+      w2lNoPython: "web2local 找不到 python3 来运行代理。请安装 Python 3（3.7+）并重启 web2local。",
+      w2lOriginRejected: "web2local 拒绝了此来源。请刷新页面后重试。",
+      w2lFetchFailed: "无法从本站点加载代理。请刷新后重试。",
+      w2lStopped: "代理已停止。",
+      w2lError: "web2local 错误：{msg}",
     },
   };
 
@@ -206,9 +261,15 @@
     sTotal: $("s-total"), sPorts: $("s-ports"), sProcs: $("s-procs"),
     sTcp: $("s-tcp"), sUdp: $("s-udp"), sExposed: $("s-exposed"), sFree: $("s-free"),
     statExposed: $("stat-exposed"), exposedAlert: $("exposed-alert"), exposedAlertText: $("exposed-alert-text"),
-    // setup commands (cmd-quick/install/manage are stable; probe-target and
-    // cmd-env-port live inside i18n-html blocks and are re-queried each sync)
-    cmdQuick: $("cmd-quick"), cmdInstall: $("cmd-install"),
+    // setup commands: cmd-manual is the "run it yourself" block; probe-target
+    // lives inside an i18n-html block and is re-queried each sync.
+    cmdManual: $("cmd-manual"),
+    // web2local card
+    w2lCard: $("w2l-card"), w2lStatus: $("w2l-status"), w2lPortInput: $("w2l-port"),
+    w2lRecheck: $("w2l-recheck"), w2lStart: $("w2l-start"), w2lStop: $("w2l-stop"),
+    w2lGet: $("w2l-get"),            // "Get web2local" link, shown when it isn't detected
+    w2lStopTop: $("w2l-stop-top"),   // Stop control in the header, shown on the live dashboard
+    w2lMsg: $("w2l-msg"), w2lLog: $("w2l-log"),
   };
 
   let currentLang = (() => {
@@ -223,6 +284,11 @@
   let rows = [];
   let sortKey = "port";
   let sortDir = 1; // 1 asc, -1 desc
+  let w2lPort = readW2lPort();
+  let w2lState = "checking";   // checking|absent|present|running|starting|approving|error
+  let w2lAgentPid = null;
+  let w2lBusy = false;         // true while a start/stop is mid-flight
+  let w2lMsgKey = null, w2lMsgParams = null;
 
   // ---------- i18n ----------
   function t(key, params) {
@@ -259,7 +325,8 @@
   function applyLanguage() {
     applyI18n();
     updateSortIndicators();   // headers were reset by applyI18n; re-add arrow
-    syncSetupCommands();      // probe-target / cmd-env-port were recreated
+    syncSetupCommands();      // probe-target was recreated by applyI18n
+    renderW2lText();          // re-translate the web2local card chip + message
     // Re-render the dynamic strings for the current state in the new language.
     if (mode === "online") refresh().catch(() => setOffline());
     else if (mode === "offline") setOffline();
@@ -304,6 +371,9 @@
     els.refresh.hidden = !on;
     els.autoWrap.hidden = !on;
     els.retry.hidden = on;
+    // The header Stop control is dashboard-only; refreshStopControl() reveals it
+    // when the live agent is one web2local can actually stop.
+    if (!on && els.w2lStopTop) els.w2lStopTop.hidden = true;
   }
 
   function setChecking() {
@@ -312,10 +382,14 @@
     els.connDetail.textContent = t("connProbing", { port });
   }
   function setOffline() {
+    const was = mode;
     mode = "offline";
     setBadge("offline", t("badgeOffline", { port }));
     showDashboard(false);
     syncSetupCommands();
+    // Probe web2local once on entering the setup view — not on every failed
+    // poll while already offline (that would clobber an in-progress start).
+    if (was !== "offline") refreshW2lCard();
     els.connDetail.textContent = t("connNoResp", { port });
     // Keep polling while auto-refresh is on: the next /api/ports call doubles
     // as a reconnect probe, so the dashboard recovers on its own when the
@@ -324,10 +398,14 @@
     else if (timer) { clearInterval(timer); timer = null; }
   }
   function setOnline(detail) {
+    const was = mode;
     mode = "online";
     setBadge("online", t("badgeConnected", { port }));
     showDashboard(true);
     if (detail) els.connDetail.textContent = detail;
+    // One-shot when we *just* connected (not on every 5s refresh tick): if this
+    // live agent is one web2local spawned, reveal the header Stop control.
+    if (was !== "online") refreshStopControl();
   }
 
   // ---------- rendering ----------
@@ -462,28 +540,304 @@
 
   function startAuto() {
     if (timer) clearInterval(timer);
-    timer = setInterval(() => { if (mode !== "checking") refresh(); }, REFRESH_MS);
+    // Skip the reconnect tick during a web2local start/stop so it can't flip to
+    // the dashboard mid-flight and race pollAgentUp()/connect().
+    timer = setInterval(() => { if (mode !== "checking" && !w2lBusy) refresh(); }, REFRESH_MS);
   }
 
   // ---------- setup commands (origin-aware so CORS works on this page) ----------
   function syncSetupCommands() {
     const origin = window.location.origin;
-    const allowed = [origin, "http://localhost:4321", "http://127.0.0.1:4321"]
+    // probe-target lives inside an i18n-html block, so re-query each call.
+    const probe = $("probe-target");
+    if (probe) probe.textContent = `127.0.0.1:${port}`;
+    // The "run it yourself" fallback: download agent.py from this very origin
+    // and run it on the chosen port, allowlisting this origin for CORS.
+    if (els.cmdManual) {
+      els.cmdManual.textContent =
+        `curl -fsSL -o ${AGENT_FILENAME} ${origin}/${AGENT_URL}\n` +
+        `python3 ${AGENT_FILENAME} serve --port ${port} --allow-origin ${origin}`;
+    }
+  }
+
+  // ---------- web2local integration ----------
+  // web2local (https://github.com/LueApp/web2local) is a generic local daemon
+  // that lets an allowlisted website deliver + run local commands under a user
+  // approval dialog. One-click start: fetch our single-file agent from this
+  // origin, add this origin to web2local's graylist (its ungated config
+  // endpoint), POST /deploy {source, sha256, …} so web2local writes the file and
+  // — after the user approves the write + run — spawns it, then poll until the
+  // agent answers. The agent stays read-only; web2local owns the process
+  // (/ps, /logs, /stop). The dashboard never runs anything itself.
+  function readW2lPort() {
+    const stored = Number(localStorage.getItem(W2L_PORT_KEY));
+    return Number.isInteger(stored) && stored >= 1 && stored <= 65535 ? stored : W2L_DEFAULT_PORT;
+  }
+  function w2lBase() { return `http://127.0.0.1:${w2lPort}`; }
+  function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+  function buildAllowedOrigins() {
+    return [window.location.origin, "http://localhost:4321", "http://127.0.0.1:4321"]
       .filter((v, i, a) => a.indexOf(v) === i)
       .join(",");
-    const portArg = port === DEFAULT_PORT ? "" : ` ${port}`;
-    // probe-target and cmd-env-port live inside i18n-html blocks, so re-query.
-    const probe = $("probe-target");
-    const envPort = $("cmd-env-port");
-    if (probe) probe.textContent = `127.0.0.1:${port}`;
-    if (envPort) envPort.textContent = `PORTSCOPE_PORT=${port}`;
-    els.cmdQuick.textContent =
-      `git clone https://github.com/LueApp/portscope.git\n` +
-      `cd portscope\n` +
-      `PORTSCOPE_PORT=${port} PORTSCOPE_ALLOWED_ORIGINS="${allowed}" python3 -m portscope.app`;
-    els.cmdInstall.textContent =
-      `cd portscope\n` +
-      `PORTSCOPE_PORT=${port} PORTSCOPE_ALLOWED_ORIGINS="${allowed}" ./install.sh${portArg}`;
+  }
+  // A file:// page has an opaque origin ("null") the agent's CORS can never
+  // accept; starting from there would only persist a junk "null" graylist entry
+  // in web2local and dead-end. web2local needs a real http(s) origin.
+  function w2lOriginUsable() {
+    return window.location.origin !== "null" &&
+           /^https?:$/i.test(window.location.protocol);
+  }
+
+  // Fetch our single-file agent from this origin and verify it matches the
+  // pinned hash *before* handing it to web2local — turns a stale-deploy mismatch
+  // into a clear message instead of web2local's generic content rejection.
+  async function fetchAgentSource() {
+    let res;
+    try {
+      res = await fetch(new URL(AGENT_URL, document.baseURI).href, { cache: "no-store" });
+    } catch { const e = new Error("agent fetch failed"); e.code = "fetch"; throw e; }
+    if (!res.ok) { const e = new Error("agent fetch failed"); e.code = "fetch"; throw e; }
+    const source = await res.text();
+    const got = await sha256Hex(source);
+    if (got && got !== AGENT_SHA256) { const e = new Error("agent hash mismatch"); e.code = "hash"; throw e; }
+    return source;
+  }
+  async function sha256Hex(text) {
+    // Secure contexts only (https / localhost / 127.0.0.1) — all valid here. If
+    // crypto.subtle is unavailable, skip the local check; web2local re-verifies.
+    if (!(window.crypto && crypto.subtle)) return null;
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function w2lFetch(path, opts, timeoutMs) {
+    const ctrl = new AbortController();
+    const tm = setTimeout(() => ctrl.abort(), timeoutMs || 4000);
+    try {
+      return await fetch(w2lBase() + path, { mode: "cors", signal: ctrl.signal, ...(opts || {}) });
+    } finally {
+      clearTimeout(tm);
+    }
+  }
+  async function w2lPostJson(path, body, timeoutMs) {
+    const res = await w2lFetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    }, timeoutMs);
+    let data = {};
+    try { data = await res.json(); } catch { /* tolerate empty/non-JSON */ }
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }
+
+  const W2L_CHIP = {
+    checking: "w2lChecking", absent: "w2lAbsent", present: "w2lDetected",
+    running: "w2lRunningChip", starting: "w2lWorking", approving: "w2lWorking",
+    error: "w2lAbsent",
+  };
+  function setW2lState(state) {
+    w2lState = state;
+    if (els.w2lStatus) {
+      els.w2lStatus.dataset.state = state;
+      els.w2lStatus.textContent = t(W2L_CHIP[state] || "w2lChecking");
+    }
+    const reachable = state === "present" || state === "running" ||
+                      state === "starting" || state === "approving";
+    const busy = state === "checking" || state === "starting" || state === "approving";
+    if (els.w2lStart) els.w2lStart.disabled = !reachable || busy || state === "running";
+    if (els.w2lStop) els.w2lStop.hidden = state !== "running";
+    // Offer the "Get web2local" link exactly when it isn't reachable.
+    if (els.w2lGet) els.w2lGet.hidden = !(state === "absent" || state === "error");
+  }
+  function setW2lMsg(key, params) {
+    w2lMsgKey = key; w2lMsgParams = params || null;
+    if (els.w2lMsg) els.w2lMsg.textContent = key ? t(key, params) : "";
+  }
+  function renderW2lText() {
+    // Re-apply chip + message in the current language (called on lang switch).
+    setW2lState(w2lState);
+    if (els.w2lMsg) els.w2lMsg.textContent = w2lMsgKey ? t(w2lMsgKey, w2lMsgParams) : "";
+  }
+
+  async function w2lFindAgentPid(forPort) {
+    // Snapshot the target port so a port change mid-probe (the global `port`
+    // can change across the awaits below) can't make us search the wrong port.
+    const want = String(forPort != null ? forPort : port);
+    try {
+      const res = await w2lFetch("/ps");
+      if (!res.ok) return null;
+      const { processes } = await res.json();
+      if (!Array.isArray(processes)) return null;
+      // web2local spawns ["python3", "<dir>/<sha8>-portscope-agent.py", "serve",
+      // "--port", N, …]. Match our agent file AND this dashboard's port, so Stop
+      // never targets an instance on another port. (--port and its value are
+      // separate argv entries.)
+      const hit = processes.find((p) => {
+        const cmd = p.command;
+        if (!Array.isArray(cmd)) return false;
+        if (!cmd.some((a) => typeof a === "string" && a.endsWith(AGENT_FILENAME))) return false;
+        if (!cmd.includes("serve")) return false;
+        const i = cmd.indexOf("--port");
+        return i >= 0 && String(cmd[i + 1]) === want;
+      });
+      return hit ? hit.pid : null;
+    } catch { return null; }
+  }
+
+  let w2lProbing = false;
+  async function refreshW2lCard() {
+    if (!els.w2lCard || w2lBusy || w2lProbing) return;
+    if (!w2lOriginUsable()) {
+      setW2lState("absent");        // also disables Start
+      setW2lMsg("w2lOpaqueOrigin");
+      return;
+    }
+    w2lProbing = true;
+    const probePort = port;   // snapshot: a mid-probe port change must not skew the result
+    setW2lState("checking");
+    try {
+      let ok = false;
+      try { ok = (await w2lFetch("/status")).ok; } catch { ok = false; }
+      if (!ok) {
+        setW2lState("absent");
+        setW2lMsg("w2lHintAbsent", { port: w2lPort });
+        return;
+      }
+      const pid = await w2lFindAgentPid(probePort);
+      if (pid) {
+        w2lAgentPid = pid;
+        setW2lState("running");
+        setW2lMsg("w2lAlreadyRunning", { pid });
+      } else {
+        w2lAgentPid = null;
+        setW2lState("present");
+        setW2lMsg("w2lHintIdle", { port: probePort });
+      }
+    } finally {
+      w2lProbing = false;
+    }
+  }
+
+  async function pollAgentUp(maxMs) {
+    const start = Date.now();
+    while (Date.now() - start < maxMs) {
+      try {
+        const h = await api("/api/health");
+        if (h && h.service === "portscope") return true;
+      } catch { /* not up yet */ }
+      await sleep(900);
+    }
+    return false;
+  }
+
+  async function showW2lLog(pid) {
+    if (!els.w2lLog || !pid) return;
+    try {
+      const res = await w2lFetch(`/logs?pid=${encodeURIComponent(pid)}`);
+      if (!res.ok) return;
+      const { tail } = await res.json();
+      if (tail) { els.w2lLog.textContent = tail; els.w2lLog.hidden = false; }
+    } catch { /* log is best-effort */ }
+  }
+
+  function w2lError(err) {
+    // An aborted fetch (our own timeout) is a DOMException named AbortError; its
+    // message is browser-specific, so key off the name, not the text.
+    if (err && err.name === "AbortError") { setW2lMsg("w2lApprovalTimeout"); return; }
+    if (err && err.code === "hash") { setW2lMsg("w2lHashMismatch"); return; }
+    if (err && err.code === "fetch") { setW2lMsg("w2lFetchFailed"); return; }
+    const msg = (err && err.message) || String(err);
+    if (/denied/i.test(msg)) setW2lMsg("w2lDenied");
+    else if (/hash|sha-?256|mismatch/i.test(msg)) setW2lMsg("w2lHashMismatch");
+    else if (/python3|not found|no such file|executable/i.test(msg)) setW2lMsg("w2lNoPython");
+    else if (/origin|whitelist|graylist/i.test(msg)) setW2lMsg("w2lOriginRejected");
+    else setW2lMsg("w2lError", { msg });
+  }
+
+  async function w2lStartAgent() {
+    if (w2lBusy) return;
+    if (!w2lOriginUsable()) { setW2lMsg("w2lOpaqueOrigin"); return; }
+    w2lBusy = true;
+    if (els.w2lLog) els.w2lLog.hidden = true;
+    setW2lState("approving");
+    setW2lMsg("w2lApprove");
+    try {
+      // 1. Load the single-file agent from our own origin (and verify its hash).
+      const source = await fetchAgentSource();
+      // 2. Add ourselves to the graylist (ungated) so /deploy is permitted — the
+      //    user still approves the write + run in web2local's dialog.
+      await w2lPostJson("/config/graylist", { origin: window.location.origin });
+      // 3. web2local writes the file, then spawns `python3 <file> serve …`.
+      const args = ["serve", "--host", "127.0.0.1", "--port", String(port),
+                    "--allow-origin", buildAllowedOrigins()];
+      // Long timeout, above web2local's ~135s approval cap, so a slow (or queued)
+      // approval isn't aborted out from under the user.
+      const res = await w2lPostJson("/deploy", {
+        source, sha256: AGENT_SHA256, filename: AGENT_FILENAME,
+        command: "python3", args,
+      }, 150000);
+      // A fresh spawn and {already_running:true} (same file already up) both just
+      // need a health poll on our port below; the poll handles either case.
+      w2lAgentPid = res.pid || null;
+      setW2lState("starting");
+      setW2lMsg("w2lStarting");
+      const up = await pollAgentUp(15000);
+      if (up) { connect(); return; }     // flips the page to the dashboard
+      setW2lState("running");
+      setW2lMsg("w2lTimeout");
+      showW2lLog(w2lAgentPid);
+    } catch (err) {
+      setW2lState(w2lAgentPid ? "running" : "present");
+      w2lError(err);
+    } finally {
+      w2lBusy = false;
+    }
+  }
+
+  async function w2lStopAgent() {
+    if (w2lBusy) return;
+    w2lBusy = true;
+    let stopped = false;
+    try {
+      // Recover the pid if we lost it (a start that timed out, or a /deploy that
+      // returned none) by asking web2local's /ps — so Stop is never a no-op while
+      // the card shows "running".
+      const pid = w2lAgentPid || await w2lFindAgentPid(port);
+      if (pid) {
+        await w2lPostJson("/stop", { pid });
+        w2lAgentPid = null;
+        if (els.w2lLog) els.w2lLog.hidden = true;
+        stopped = true;
+      }
+    } catch (err) {
+      w2lError(err);   // leave the error visible; agent may still be running
+    } finally {
+      w2lBusy = false;
+    }
+    // w2lBusy is false now, so refreshW2lCard re-detects the true state.
+    await refreshW2lCard();
+    if (stopped) setW2lMsg("w2lStopped");
+  }
+
+  // The live dashboard hides the setup screen (and its Stop button), so surface a
+  // Stop control in the header — but only for an agent web2local is tracking.
+  // Probe /ps once when we connect; reveal Stop + remember the pid if our
+  // current-port agent is there. A manually-launched agent isn't in web2local's
+  // registry, so no button appears — you stop those where you started them.
+  async function refreshStopControl() {
+    if (!els.w2lStopTop) return;
+    if (mode !== "online" || !w2lOriginUsable()) { els.w2lStopTop.hidden = true; return; }
+    const probePort = port;
+    let pid = null;
+    try {
+      if ((await w2lFetch("/status")).ok) pid = await w2lFindAgentPid(probePort);
+    } catch { pid = null; }
+    // Drop the result if we left online or the port changed during the probe.
+    if (mode !== "online" || port !== probePort) return;
+    if (pid) { w2lAgentPid = pid; els.w2lStopTop.hidden = false; }
+    else { els.w2lStopTop.hidden = true; }
   }
 
   // ---------- events ----------
@@ -503,6 +857,24 @@
   els.refresh.addEventListener("click", () => refresh());
   els.retry.addEventListener("click", () => connect());
   els.setupRetry.addEventListener("click", () => connect());
+  if (els.w2lPortInput) {
+    els.w2lPortInput.addEventListener("change", () => {
+      const v = Number(els.w2lPortInput.value);
+      if (Number.isInteger(v) && v >= 1 && v <= 65535) {
+        w2lPort = v;
+        localStorage.setItem(W2L_PORT_KEY, String(w2lPort));
+      }
+      refreshW2lCard();
+    });
+  }
+  if (els.w2lRecheck) els.w2lRecheck.addEventListener("click", () => refreshW2lCard());
+  if (els.w2lStart) els.w2lStart.addEventListener("click", () => w2lStartAgent());
+  if (els.w2lStop) els.w2lStop.addEventListener("click", () => w2lStopAgent());
+  if (els.w2lStopTop) els.w2lStopTop.addEventListener("click", async () => {
+    els.w2lStopTop.disabled = true;
+    try { await w2lStopAgent(); } finally { els.w2lStopTop.disabled = false; }
+    connect();   // agent should be down now → page falls back to the setup screen
+  });
   els.auto.addEventListener("change", () => {
     autoRefresh = els.auto.checked;
     localStorage.setItem(AUTO_KEY, autoRefresh ? "1" : "0");
@@ -540,8 +912,10 @@
   els.portInput.value = String(port);
   els.auto.checked = autoRefresh;
   els.langSelect.value = currentLang;
+  if (els.w2lPortInput) els.w2lPortInput.value = String(w2lPort);
   applyI18n();
   updateSortIndicators();
   syncSetupCommands();
+  if (els.w2lCard) setW2lState("checking");  // paint the chip; setOffline() probes
   connect();
 })();

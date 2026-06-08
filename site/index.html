@@ -43,6 +43,7 @@
           <span class="switch-track"><span class="switch-thumb"></span></span>
           <span class="switch-label" data-i18n="auto">Auto</span>
         </label>
+        <button id="w2l-stop-top" class="btn w2l-stop" type="button" data-i18n="w2lStop" hidden>Stop agent</button>
         <button id="retry-btn" class="btn primary" type="button" data-i18n="retry" hidden>Retry</button>
       </div>
     </header>
@@ -155,39 +156,32 @@
         </div>
 
         <div class="setup-grid">
-          <article class="card">
-            <div class="card-head"><span class="card-badge step">1</span><h2 data-i18n="card1Title">Quick start (no install)</h2></div>
-            <p class="muted" data-i18n="card1Body">Pure Python standard library — no dependencies to install.</p>
-            <div class="cmd"><pre><code id="cmd-quick"></code></pre><button class="copy" type="button" data-copy="cmd-quick" data-i18n="copy" aria-label="Copy command">Copy</button></div>
-            <p class="muted small" data-i18n="card1Note">Leave it running in a terminal. The dashboard appears here automatically once it responds.</p>
+          <article class="card w2l-card" id="w2l-card">
+            <div class="card-head">
+              <span class="card-badge w2l-badge" aria-hidden="true">⚡</span>
+              <h2 data-i18n="w2lTitle">Start with web2local</h2>
+              <span class="w2l-status" id="w2l-status" data-state="checking"></span>
+            </div>
+            <p class="muted" data-i18n-html="w2lBody">Running <a href="https://web2local-bridge.lue-app.com/" target="_blank" rel="noopener noreferrer">web2local</a>? Start the agent from here — no terminal. You approve the exact command in web2local's dialog before it runs.</p>
+            <div class="w2l-row">
+              <label for="w2l-port" data-i18n="w2lPortLabel">web2local port</label>
+              <input id="w2l-port" type="number" min="1" max="65535" step="1" inputmode="numeric" value="7878" />
+              <button id="w2l-recheck" class="btn" type="button" data-i18n="w2lRecheck">Check</button>
+            </div>
+            <div class="button-row w2l-actions">
+              <button id="w2l-start" class="btn primary" type="button" data-i18n="w2lStart">Start agent</button>
+              <button id="w2l-stop" class="btn" type="button" hidden data-i18n="w2lStop">Stop agent</button>
+              <a id="w2l-get" class="btn" href="https://web2local-bridge.lue-app.com/" target="_blank" rel="noopener noreferrer" data-i18n="w2lGet" hidden>Get web2local ↗</a>
+            </div>
+            <p class="muted small w2l-msg" id="w2l-msg"></p>
+            <pre class="w2l-log" id="w2l-log" hidden></pre>
           </article>
 
           <article class="card">
-            <div class="card-head"><span class="card-badge step">2</span><h2 data-i18n="card2Title">Install as a service</h2></div>
-            <p class="muted" data-i18n="card2Body">Sets up a systemd <em>user</em> service that starts at login.</p>
-            <div class="cmd"><pre><code id="cmd-install"></code></pre><button class="copy" type="button" data-copy="cmd-install" data-i18n="copy" aria-label="Copy command">Copy</button></div>
-            <p class="muted small" data-i18n-html="card2Note">The installer binds the agent to <code>127.0.0.1</code> and allowlists this page's origin for CORS.</p>
-          </article>
-
-          <article class="card">
-            <div class="card-head"><span class="card-badge">↻</span><h2 data-i18n="card3Title">Manage the service</h2></div>
-            <div class="cmd"><pre><code id="cmd-manage">systemctl --user enable --now portscope.service
-systemctl --user status portscope.service
-journalctl --user -u portscope -f</code></pre><button class="copy" type="button" data-copy="cmd-manage" data-i18n="copy" aria-label="Copy commands">Copy</button></div>
-            <p class="muted small" data-i18n-html="card3Note">Stop with <code>systemctl --user disable --now portscope.service</code>.</p>
-          </article>
-
-          <article class="card">
-            <div class="card-head"><span class="card-badge">⚙</span><h2 data-i18n="card4Title">Change the port</h2></div>
-            <p class="muted" data-i18n-html="card4Body">
-              The agent defaults to <code>8790</code>. To run it on a different port, start it with
-              <code id="cmd-env-port">PORTSCOPE_PORT=8790</code> (this updates to match the
-              <strong>Agent port</strong> field above), then set the same number in that field and click Apply.
-            </p>
-            <p class="muted small" data-i18n="card4Note">
-              Your chosen port is remembered in this browser. The agent is read-only — it exposes JSON only and
-              never runs commands.
-            </p>
+            <div class="card-head"><span class="card-badge">⌨</span><h2 data-i18n="manualTitle">Run it yourself (no web2local)</h2></div>
+            <p class="muted" data-i18n-html="manualBody">No web2local? Download the agent and run it — pure Python standard library, nothing to install. Set the <strong>Agent port</strong> above to match.</p>
+            <div class="cmd"><pre><code id="cmd-manual"></code></pre><button class="copy" type="button" data-copy="cmd-manual" data-i18n="copy" aria-label="Copy command">Copy</button></div>
+            <p class="muted small" data-i18n-html="manualNote">It binds <code>127.0.0.1</code> only and is read-only — JSON, no command execution. Stop it with Ctrl-C.</p>
           </article>
         </div>
       </section>

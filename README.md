@@ -3,10 +3,9 @@
 A lightweight dashboard for **what's listening on your machine's ports**.
 
 A website cannot read your local ports — the browser sandbox forbids it. So
-portscope uses the same split as [typefreq](../count-words/typefreq): a static
-web dashboard that probes a tiny **local read-only agent** over `127.0.0.1`. If
-the agent is running, the page shows live port data. If it isn't, the same page
-shows setup and start guidance.
+portscope splits in two: a static web dashboard that probes a tiny **local
+read-only agent** over `127.0.0.1`. If the agent is running, the page shows live
+port data. If it isn't, the same page shows how to start it.
 
 ```
   browser ──fetch──> http://127.0.0.1:8790/api/ports ──reads──> /proc/net/*
@@ -14,7 +13,8 @@ shows setup and start guidance.
 ```
 
 Nothing leaves your machine. The agent binds loopback only and exposes JSON
-APIs — there is no command-execution endpoint.
+APIs — there is no command-execution endpoint. The whole agent is a single
+standard-library Python file (`site/agent.py`); there is nothing to install.
 
 ## What it shows
 
@@ -32,60 +32,63 @@ UDP counts, an **all-interfaces warning count**, and suggests currently-free
 dev ports. Listeners bound to `0.0.0.0` or `::` are highlighted as reachable
 from outside the machine.
 
-## Quick start (no install)
+## Running the agent
 
-The agent is pure Python standard library — nothing to install.
+You need `python3` (3.7+). That's the only prerequisite — the agent has no
+dependencies.
 
-```bash
-git clone https://github.com/LueApp/portscope.git
-cd portscope
-python3 -m portscope.app
-```
+### Start from the dashboard with web2local (recommended)
 
-It listens on `http://127.0.0.1:8790`. Open the dashboard
-(`https://portscope.lue-app.com`, or serve `site/` locally) and it connects
-automatically.
+[web2local](https://web2local-bridge.lue-app.com/) is a small local daemon that
+lets an allowlisted website deliver and run a local command **with your
+approval**. If it's running, the dashboard's **Start with web2local** card
+starts the agent for you — no terminal, no install. It:
 
-## Install as a service
+1. detects web2local (default port `7878`),
+2. fetches the single-file agent (`agent.py`) from this page's origin and
+   verifies its SHA-256,
+3. adds this page's origin to web2local's *graylist*, then
+4. calls web2local's `/deploy`: web2local writes the agent under
+   `~/.config/web2local/agents/` and — once you **approve the write + run** in
+   its dialog — spawns
+   `python3 …/portscope-agent.py serve --port <agent port> --allow-origin <this origin>`.
 
-```bash
-cd portscope
-./install.sh            # or: ./install.sh 9000  to pick a port
-```
+The same card can **Stop** the agent and tail its log on failure. web2local owns
+the process (`/ps`, `/logs`, `/stop`); the dashboard never runs anything itself.
+The agent stays read-only and loopback-only — it never grows a command endpoint.
 
-This renders a systemd **user** unit, enables autostart, and starts it. Common
-commands:
+### Run it yourself
 
-```bash
-systemctl --user enable --now portscope.service
-systemctl --user status portscope.service
-journalctl --user -u portscope -f
-```
-
-To keep the agent running after you log out:
+No web2local? Download the single file and run it:
 
 ```bash
-sudo loginctl enable-linger "$USER"
+curl -fsSL -o portscope-agent.py https://portscope.lue-app.com/agent.py
+python3 portscope-agent.py serve --port 8790 --allow-origin https://portscope.lue-app.com
 ```
 
-## Configuration
+Or from a clone of this repo: `python3 site/agent.py serve --port 8790`. It
+listens on `http://127.0.0.1:8790`; open the dashboard and it connects
+automatically. Stop it with Ctrl-C.
 
-All settings are environment variables read by `portscope/config.py`:
+### Flags
 
-| Variable | Default | Meaning |
+`agent.py serve` is configured with flags, so a supervisor (web2local, or your
+shell) can set everything without environment variables or a working directory:
+
+| Flag | Default | Meaning |
 | --- | --- | --- |
-| `PORTSCOPE_HOST` | `127.0.0.1` | Bind address. Keep it on loopback. |
-| `PORTSCOPE_PORT` | `8790` | Agent port. |
-| `PORTSCOPE_PUBLIC_SITE` | `https://portscope.lue-app.com` | The deployed dashboard origin. |
-| `PORTSCOPE_ALLOWED_ORIGINS` | public site + localhost dev | Comma-separated CORS allowlist. |
-| `PORTSCOPE_ALLOW_LOOPBACK_ORIGINS` | `1` | Also accept any loopback origin (any local port). Set `0` to require an exact allowlist match. |
-| `PORTSCOPE_FREE_CANDIDATES` | common dev ports | Pool to pull free-port suggestions from. |
-| `PORTSCOPE_FREE_SUGGESTION_LIMIT` | `10` | Max free-port suggestions. |
+| `--port N` | `8790` | Agent port. |
+| `--host ADDR` | `127.0.0.1` | Bind address. Keep it on loopback. |
+| `--allow-origin CSV` | public site + localhost dev | Browser origin(s) allowed to read the agent. Repeatable; commas allowed. |
+| `--public-site URL` | `https://portscope.lue-app.com` | Deployed dashboard origin. |
 
-Any origin in `PORTSCOPE_ALLOWED_ORIGINS` can read the full list of what's
-listening on your machine while the agent runs — keep it tight. The agent
-sends CORS headers and Chrome **Private Network Access** headers only for these
-origins.
+Each flag has a `PORTSCOPE_*` environment-variable equivalent (`PORTSCOPE_PORT`,
+`PORTSCOPE_HOST`, `PORTSCOPE_ALLOWED_ORIGINS`, `PORTSCOPE_PUBLIC_SITE`); the
+flags take precedence. Any origin allowed to read the agent can see the full
+list of what's listening while it runs — keep the allowlist tight. By default
+the agent **also** accepts any loopback origin (any local port), so local
+previews work without listing each one; set `PORTSCOPE_ALLOW_LOOPBACK_ORIGINS=0`
+to require an exact allowlist match.
 
 ## PID resolution and permissions
 
@@ -102,31 +105,28 @@ personal dashboard, running as your user is the safer default.
 - `GET /api/health` → `{ ok, service: "portscope", version, public_site }`
 - `GET /api/ports` → `{ summary, listeners, free_suggestions, generated_at }`
 
-Only `GET` (and `OPTIONS` for CORS preflight) are handled; every mutating
-method returns `405`. The agent is read-only.
+Only `GET`, `HEAD`, and `OPTIONS` (the latter for CORS preflight) are handled;
+every mutating method (POST/PUT/DELETE/PATCH) returns `405`. The agent is
+read-only.
 
 ## The web dashboard
 
-`site/` is a plain static site (HTML/CSS/JS — no build step). Host it anywhere:
+`site/` is a plain static site (HTML/CSS/JS — no build step). The agent
+(`agent.py`) is served from the same directory, so web2local fetches it
+same-origin. Host `site/` anywhere:
 
 - **Locally:** `cd site && python3 -m http.server 5500`, then open
   <http://127.0.0.1:5500>. Any loopback origin (`localhost`/`127.0.0.1`/`[::1]`,
-  any port) is accepted by default, so local previews just work without
-  touching the allowlist.
-- **Cloudflare Pages / any static host:** deploy the `site/` directory. The
-  `_headers` file applies security headers. Set `PORTSCOPE_ALLOWED_ORIGINS` (or
-  use the setup page's pre-filled command, which bakes in your page origin) so
-  the agent allows your deployed (non-loopback) origin.
+  any port) is accepted by default, so local previews just work.
+- **Cloudflare Pages / any static host:** deploy the `site/` directory (the
+  `_headers` file applies security headers). The setup page's **Run it
+  yourself** card pre-fills a `curl … && python3 …` command with your deployed
+  origin baked into `--allow-origin`.
 
-By default the agent allows any **loopback** origin in addition to
-`PORTSCOPE_ALLOWED_ORIGINS`. The agent binds loopback only and anything that can
-serve a page on your localhost could already read `/proc`, so this is low-risk
-and removes per-port friction. Set `PORTSCOPE_ALLOW_LOOPBACK_ORIGINS=0` to
-require an exact allowlist match instead.
-
-The page persists your chosen agent port in `localStorage`, has a manual
-refresh button and an auto-refresh toggle, and the listener table supports
-search, protocol/scope filtering, an "exposed only" filter, and column sort.
+The page persists your chosen agent port in `localStorage`, has a manual refresh
+button and an auto-refresh toggle, and the listener table supports search,
+protocol/scope filtering, an "exposed only" filter, and column sort. English and
+中文 are both included.
 
 ## Tests
 
@@ -135,5 +135,7 @@ python3 smoke_test.py
 ```
 
 Covers address parsing, scope classification, `/proc/net` parsing, container
-hints, free-port suggestions, a live scan, and the HTTP API (including CORS,
-Private Network Access preflight, and read-only method rejection).
+hints, free-port suggestions, a live scan, the HTTP API (CORS, Private Network
+Access preflight, read-only method rejection), the `agent.py serve` CLI, and a
+**drift guard** that the agent's sha256 matches the hash the dashboard pins for
+web2local's `/deploy` (so the two can never silently diverge).

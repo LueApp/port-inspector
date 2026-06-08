@@ -1,35 +1,69 @@
 #!/usr/bin/env python3
 """Smoke tests for the portscope agent. Pure stdlib, no network egress.
 
+The agent is the single self-contained file ``site/agent.py`` — the same file
+web2local deploys + runs. These tests load it by path and exercise address
+parsing, scope classification, ``/proc/net`` parsing, container hints,
+free-port suggestions, a live scan, the HTTP API, and the CLI front-end — plus
+a drift guard that the agent's sha256 matches the hash the dashboard pins in
+``site/app.js`` (web2local's ``/deploy`` rejects a mismatch).
+
 Run:  python3 smoke_test.py
 """
 from __future__ import annotations
 
+import hashlib
+import importlib.util
 import json
+import os
+import re
+import signal
+import socket
+import subprocess
+import sys
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 
-from portscope import app, config, procscan
+REPO = os.path.dirname(os.path.abspath(__file__))
+AGENT_PY = os.path.join(REPO, "site", "agent.py")
+APP_JS = os.path.join(REPO, "site", "app.js")
+
+
+def _load_agent():
+    """Load site/agent.py as a module (its `if __name__ == '__main__'` guard
+    keeps it from serving on import)."""
+    spec = importlib.util.spec_from_file_location("portscope_agent", AGENT_PY)
+    mod = importlib.util.module_from_spec(spec)
+    # Register before exec so @dataclass / typing can resolve the module's own
+    # namespace (Python 3.14 looks it up via sys.modules during class build).
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+agent = _load_agent()
+agent.configure()  # populate the config globals from defaults (no PORTSCOPE_* env)
 
 
 class AddressParsing(unittest.TestCase):
     def test_ipv4(self):
-        self.assertEqual(procscan._parse_ipv4("0100007F"), "127.0.0.1")
-        self.assertEqual(procscan._parse_ipv4("00000000"), "0.0.0.0")
-        self.assertEqual(procscan._parse_ipv4("0101A8C0"), "192.168.1.1")
+        self.assertEqual(agent._parse_ipv4("0100007F"), "127.0.0.1")
+        self.assertEqual(agent._parse_ipv4("00000000"), "0.0.0.0")
+        self.assertEqual(agent._parse_ipv4("0101A8C0"), "192.168.1.1")
 
     def test_ipv6(self):
-        self.assertEqual(procscan._parse_ipv6("0" * 32), "::")
+        self.assertEqual(agent._parse_ipv6("0" * 32), "::")
         self.assertEqual(
-            procscan._parse_ipv6("00000000000000000000000001000000"), "::1"
+            agent._parse_ipv6("00000000000000000000000001000000"), "::1"
         )
 
     def test_addr_port(self):
-        addr, port = procscan._parse_addr("0100007F:1F90", "ipv4")
+        addr, port = agent._parse_addr("0100007F:1F90", "ipv4")
         self.assertEqual((addr, port), ("127.0.0.1", 8080))
 
 
@@ -47,7 +81,7 @@ class ScopeClassification(unittest.TestCase):
             "ff02::1": ("multicast", False, False),
         }
         for addr, expected in cases.items():
-            self.assertEqual(procscan.classify_scope(addr), expected, addr)
+            self.assertEqual(agent.classify_scope(addr), expected, addr)
 
 
 class ProcNetParsing(unittest.TestCase):
@@ -61,7 +95,7 @@ class ProcNetParsing(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".tcp", delete=False) as fh:
             fh.write(content)
             path = fh.name
-        socks = procscan._read_proc_net(path, "tcp", "ipv4", procscan._TCP_LISTEN)
+        socks = agent._read_proc_net(path, "tcp", "ipv4", agent._TCP_LISTEN)
         self.assertEqual(len(socks), 1)
         self.assertEqual(socks[0].port, 8080)
         self.assertEqual(socks[0].address, "127.0.0.1")
@@ -79,7 +113,7 @@ class ProcNetParsing(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".udp", delete=False) as fh:
             fh.write(content)
             path = fh.name
-        socks = procscan._read_proc_net(path, "udp", "ipv4", procscan._UDP_CLOSE)
+        socks = agent._read_proc_net(path, "udp", "ipv4", agent._UDP_CLOSE)
         self.assertEqual([s.port for s in socks], [5353])
         self.assertEqual(socks[0].scope, "all interfaces")
 
@@ -94,7 +128,7 @@ class ContainerHint(unittest.TestCase):
         ]
         for line in samples:
             hit = None
-            for rx in procscan._CONTAINER_RES:
+            for rx in agent._CONTAINER_RES:
                 m = rx.search(line)
                 if m:
                     hit = m.group(1)[:12]
@@ -103,22 +137,22 @@ class ContainerHint(unittest.TestCase):
 
     def test_no_false_positive(self):
         line = "0::/user.slice/user-1000.slice/session-3.scope"
-        self.assertFalse(any(rx.search(line) for rx in procscan._CONTAINER_RES))
+        self.assertFalse(any(rx.search(line) for rx in agent._CONTAINER_RES))
 
 
 class FreeSuggestions(unittest.TestCase):
     def test_excludes_used(self):
-        out = procscan._free_suggestions({3000, 8080}, [3000, 3001, 8080, 9000], 10)
+        out = agent._free_suggestions({3000, 8080}, [3000, 3001, 8080, 9000], 10)
         self.assertEqual(out, [3001, 9000])
 
     def test_limit(self):
-        out = procscan._free_suggestions(set(), [1, 2, 3, 4, 5], 3)
+        out = agent._free_suggestions(set(), [1, 2, 3, 4, 5], 3)
         self.assertEqual(out, [1, 2, 3])
 
 
 class LiveScan(unittest.TestCase):
     def test_scan_shape(self):
-        r = procscan.scan(config.FREE_CANDIDATES, config.FREE_SUGGESTION_LIMIT)
+        r = agent.scan(agent.FREE_CANDIDATES, agent.FREE_SUGGESTION_LIMIT)
         self.assertIn("summary", r)
         self.assertIn("listeners", r)
         self.assertIn("free_suggestions", r)
@@ -133,8 +167,8 @@ class LiveScan(unittest.TestCase):
 class HttpApi(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        config.ALLOWED_ORIGINS = {"https://portscope.example"}
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), app.Handler)
+        agent.ALLOWED_ORIGINS = {"https://portscope.example"}
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), agent.Handler)
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
@@ -264,6 +298,109 @@ class HttpApi(unittest.TestCase):
         self.assertIn(b"connection: close", raw.lower())
         # Exactly one Connection header (no framework/explicit duplicate).
         self.assertEqual(raw.lower().count(b"connection: close"), 1)
+
+
+class CliLauncher(unittest.TestCase):
+    """`python3 agent.py serve --port N …` is how web2local (and a plain shell)
+    start the agent: flags instead of env vars, no install, no PYTHONPATH."""
+
+    @staticmethod
+    def _free_port() -> int:
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        return port
+
+    def test_parser_defaults(self):
+        args = agent._build_parser().parse_args(["serve"])
+        self.assertEqual(args.cmd, "serve")
+        self.assertIsNone(args.port)
+        self.assertEqual(args.allow_origin, [])
+
+    def test_version(self):
+        out = subprocess.run(
+            [sys.executable, AGENT_PY, "--version"],
+            capture_output=True, text=True, timeout=20,
+        )
+        self.assertEqual(out.returncode, 0)
+        self.assertIn("portscope", out.stdout)
+
+    def test_bad_port_exit_code(self):
+        out = subprocess.run(
+            [sys.executable, AGENT_PY, "serve", "--port", "70000"],
+            capture_output=True, text=True, timeout=20,
+        )
+        self.assertEqual(out.returncode, 2)
+
+    def test_serve_boots_honors_flags_and_stops_on_sigterm(self):
+        # Spawn exactly the way web2local's /deploy does: own session, so a
+        # later os.killpg() (web2local's /stop) reaches the whole group.
+        port = self._free_port()
+        proc = subprocess.Popen(
+            [sys.executable, AGENT_PY, "serve",
+             "--port", str(port), "--host", "127.0.0.1",
+             "--allow-origin", "https://cli.example,http://localhost:4321"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL, start_new_session=True,
+        )
+        try:
+            up = False
+            for _ in range(50):
+                try:
+                    urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/api/health", timeout=1
+                    ).read()
+                    up = True
+                    break
+                except Exception:
+                    if proc.poll() is not None:
+                        break
+                    time.sleep(0.2)
+            self.assertTrue(up, "agent did not boot via `python3 agent.py serve`")
+
+            # The --allow-origin flag must reach config: the agent echoes CORS
+            # only for an allowed origin.
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/health")
+            req.add_header("Origin", "https://cli.example")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                self.assertEqual(
+                    resp.headers.get("Access-Control-Allow-Origin"),
+                    "https://cli.example",
+                )
+        finally:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                pass
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait(timeout=5)
+            if proc.stdout:
+                proc.stdout.close()
+        # Graceful SIGTERM handling → clean exit (what web2local /stop relies on).
+        self.assertEqual(proc.returncode, 0)
+
+
+class AgentHashPin(unittest.TestCase):
+    """The dashboard pins the agent's sha256 in site/app.js; web2local's
+    /deploy rejects a content/hash mismatch. Guard against agent.py / app.js
+    drift so a stale pin can't silently break the Start button."""
+
+    def test_app_js_pin_matches_agent_file(self):
+        with open(AGENT_PY, "rb") as fh:
+            digest = hashlib.sha256(fh.read()).hexdigest()
+        with open(APP_JS, "r", encoding="utf-8") as fh:
+            js = fh.read()
+        m = re.search(r'AGENT_SHA256\s*=\s*"([0-9a-f]{64})"', js)
+        self.assertIsNotNone(m, "AGENT_SHA256 constant not found in site/app.js")
+        self.assertEqual(
+            m.group(1), digest,
+            "site/app.js AGENT_SHA256 is stale — set it to the sha256 of "
+            f"site/agent.py ({digest}); web2local /deploy rejects a mismatch.",
+        )
 
 
 if __name__ == "__main__":
