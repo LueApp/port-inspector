@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>portscope — local port dashboard</title>
+  <title>Port Inspector — what's listening locally</title>
   <meta name="description" content="A dashboard for what's listening on your machine's ports. Reads a small local read-only agent over localhost; shows setup guidance when the agent isn't running." />
   <meta name="color-scheme" content="light dark" />
   <link rel="stylesheet" href="/styles.css" />
@@ -16,8 +16,8 @@
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>
         </span>
         <span class="brand-text">
-          <span class="brand-name">portscope</span>
-          <span class="brand-sub" data-i18n="brandSub">local port dashboard</span>
+          <span class="brand-name">Port Inspector</span>
+          <span class="brand-sub" data-i18n="brandSub">what's listening on your machine</span>
         </span>
         <span id="badge" class="badge checking"><span class="badge-dot"></span><span class="badge-text" data-i18n="badgeChecking">checking…</span></span>
       </div>
@@ -142,10 +142,10 @@
       <section id="setup">
         <div class="setup-head">
           <p class="eyebrow" id="setup-eyebrow"><span class="eyebrow-dot"></span><span data-i18n="setupEyebrow">Local service not detected</span></p>
-          <h1 data-i18n="setupTitle">Run the portscope agent to see your ports here.</h1>
+          <h1 data-i18n="setupTitle">Run the local agent to see your ports here.</h1>
           <p class="lead" data-i18n-html="setupLead">
             A website on its own cannot read your machine's open ports — the browser sandbox forbids it.
-            portscope ships a tiny <strong>read-only</strong> agent that listens on
+            Port Inspector uses a tiny <strong>read-only</strong> agent that listens on
             <code id="probe-target">127.0.0.1:8790</code> and serves the port list as JSON. This page reads
             that agent directly from your browser. Start it once and this page becomes a live dashboard.
           </p>
@@ -188,7 +188,7 @@
     </main>
 
     <footer class="appfoot">
-      <span data-i18n="footerText">portscope · local read-only port dashboard</span>
+      <span data-i18n="footerText">Port Inspector · local read-only port dashboard</span>
       <span id="conn-detail" class="muted"></span>
     </footer>
   </div>

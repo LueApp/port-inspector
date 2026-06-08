@@ -20,8 +20,8 @@
   // ---------- translations ----------
   const translations = {
     en: {
-      metaTitle: "portscope — local port dashboard",
-      brandSub: "local port dashboard",
+      metaTitle: "Port Inspector — what's listening locally",
+      brandSub: "what's listening on your machine",
       badgeChecking: "checking…",
       agentPort: "Agent port",
       apply: "Apply",
@@ -55,10 +55,10 @@
       colContainer: "Container",
       tableEmpty: "No sockets match the current filters.",
       setupEyebrow: "Local service not detected",
-      setupTitle: "Run the portscope agent to see your ports here.",
+      setupTitle: "Run the local agent to see your ports here.",
       setupLead:
         "A website on its own cannot read your machine's open ports — the browser sandbox forbids it. " +
-        "portscope ships a tiny <strong>read-only</strong> agent that listens on " +
+        "Port Inspector uses a tiny <strong>read-only</strong> agent that listens on " +
         '<code id="probe-target">127.0.0.1:8790</code> and serves the port list as JSON. This page reads ' +
         "that agent directly from your browser. Start it once and this page becomes a live dashboard.",
       setupRetry: "I started it — retry",
@@ -71,7 +71,7 @@
         "It binds <code>127.0.0.1</code> only and is read-only — JSON, no command execution. Stop it with Ctrl-C.",
       copy: "Copy",
       copied: "Copied",
-      footerText: "portscope · local read-only port dashboard",
+      footerText: "Port Inspector · local read-only port dashboard",
       badgeConnected: "connected · :{port}",
       badgeOffline: "no agent on {port}",
       badgePortRange: "port must be 1–65535",
@@ -127,8 +127,8 @@
       w2lError: "web2local error: {msg}",
     },
     zh: {
-      metaTitle: "portscope — 本地端口面板",
-      brandSub: "本地端口面板",
+      metaTitle: "Port Inspector — 本地端口面板",
+      brandSub: "本机正在监听的端口",
       badgeChecking: "检查中…",
       agentPort: "代理端口",
       apply: "应用",
@@ -162,9 +162,9 @@
       colContainer: "容器",
       tableEmpty: "没有符合当前筛选的套接字。",
       setupEyebrow: "未检测到本地服务",
-      setupTitle: "运行 portscope 代理，即可在此查看端口。",
+      setupTitle: "运行本地代理，即可在此查看端口。",
       setupLead:
-        "网页自身无法读取本机的开放端口——浏览器沙箱禁止这样做。portscope 提供一个极小的" +
+        "网页自身无法读取本机的开放端口——浏览器沙箱禁止这样做。Port Inspector 提供一个极小的" +
         "<strong>只读</strong>代理，监听在 " +
         '<code id="probe-target">127.0.0.1:8790</code>，并以 JSON 提供端口列表。本页面直接从你的浏览器' +
         "读取该代理。启动一次后，本页面即成为实时面板。",
@@ -178,7 +178,7 @@
         "它仅绑定 <code>127.0.0.1</code>，且为只读——只提供 JSON，不执行任何命令。按 Ctrl-C 停止。",
       copy: "复制",
       copied: "已复制",
-      footerText: "portscope · 本地只读端口面板",
+      footerText: "Port Inspector · 本地只读端口面板",
       badgeConnected: "已连接 · :{port}",
       badgeOffline: "{port} 无代理",
       badgePortRange: "端口须为 1–65535",
