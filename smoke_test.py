@@ -4,8 +4,8 @@
 The agent is the single self-contained file ``site/agent.py`` — the same file
 web2local deploys + runs. These tests load it by path and exercise address
 parsing, scope classification, ``/proc/net`` parsing, container hints,
-free-port suggestions, a live scan, the HTTP API, and the CLI front-end — plus
-a drift guard that the agent's sha256 matches the hash the dashboard pins in
+free-port suggestions, guarded process termination, a live scan, the HTTP API,
+and the CLI front-end — plus a drift guard that the agent's sha256 matches the hash the dashboard pins in
 ``site/app.js`` (web2local's ``/deploy`` rejects a mismatch).
 
 Run:  python3 smoke_test.py
@@ -181,11 +181,22 @@ class HttpApi(unittest.TestCase):
     def _url(self, path):
         return f"http://127.0.0.1:{self.port}{path}"
 
+    def _post_json(self, path, body, origin="https://portscope.example"):
+        data = json.dumps(body).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if origin is not None:
+            headers["Origin"] = origin
+        req = urllib.request.Request(
+            self._url(path), data=data, headers=headers, method="POST"
+        )
+        return urllib.request.urlopen(req, timeout=5)
+
     def test_health(self):
         with urllib.request.urlopen(self._url("/api/health"), timeout=5) as resp:
             data = json.load(resp)
         self.assertTrue(data["ok"])
         self.assertEqual(data["service"], "portscope")
+        self.assertIn("kill_processes", data["capabilities"])
 
     def test_ports_shape(self):
         with urllib.request.urlopen(self._url("/api/ports"), timeout=5) as resp:
@@ -235,6 +246,79 @@ class HttpApi(unittest.TestCase):
             urllib.request.urlopen(req, timeout=5)
         self.assertEqual(ctx.exception.code, 405)
         self.assertEqual(ctx.exception.headers.get("Allow"), "GET, HEAD, OPTIONS")
+        ctx.exception.close()
+
+    def test_kill_disabled_by_default(self):
+        old = agent.ALLOW_KILL
+        agent.ALLOW_KILL = False
+        try:
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                self._post_json("/api/kill", {"pid": 424242, "port": 1234, "protocol": "tcp"})
+            self.assertEqual(ctx.exception.code, 403)
+            body = json.loads(ctx.exception.read().decode("utf-8"))
+            self.assertEqual(body["code"], "kill_disabled")
+            ctx.exception.close()
+        finally:
+            agent.ALLOW_KILL = old
+
+    def test_kill_rejects_disallowed_origin(self):
+        old = agent.ALLOW_KILL
+        agent.ALLOW_KILL = True
+        try:
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                self._post_json(
+                    "/api/kill",
+                    {"pid": 424242, "port": 1234, "protocol": "tcp"},
+                    origin="https://evil.example",
+                )
+            self.assertEqual(ctx.exception.code, 403)
+            body = json.loads(ctx.exception.read().decode("utf-8"))
+            self.assertEqual(body["code"], "origin_rejected")
+            ctx.exception.close()
+        finally:
+            agent.ALLOW_KILL = old
+
+    def test_kill_sends_signal_for_current_listener(self):
+        target_pid = os.getpid() + 100000
+        calls = []
+        old_allow = agent.ALLOW_KILL
+        old_scan = agent.scan
+        old_kill = agent.os.kill
+
+        def fake_scan(_candidates, _limit):
+            return {
+                "summary": {},
+                "free_suggestions": [],
+                "listeners": [
+                    {
+                        "pid": target_pid,
+                        "port": 54321,
+                        "protocol": "tcp",
+                        "process": "old-dev-server",
+                    }
+                ],
+            }
+
+        def fake_kill(pid, sig):
+            calls.append((pid, sig))
+
+        agent.ALLOW_KILL = True
+        agent.scan = fake_scan
+        agent.os.kill = fake_kill
+        try:
+            with self._post_json(
+                "/api/kill",
+                {"pid": target_pid, "port": 54321, "protocol": "tcp"},
+            ) as resp:
+                data = json.load(resp)
+            self.assertTrue(data["ok"])
+            self.assertEqual(data["signal"], "SIGTERM")
+            self.assertEqual(data["process"], "old-dev-server")
+            self.assertEqual(calls, [(target_pid, signal.SIGTERM)])
+        finally:
+            agent.ALLOW_KILL = old_allow
+            agent.scan = old_scan
+            agent.os.kill = old_kill
 
     def test_idle_reset_is_silent(self):
         # A browser resets idle keep-alive connections; that must be swallowed
@@ -317,6 +401,7 @@ class CliLauncher(unittest.TestCase):
         self.assertEqual(args.cmd, "serve")
         self.assertIsNone(args.port)
         self.assertEqual(args.allow_origin, [])
+        self.assertFalse(args.allow_kill)
 
     def test_version(self):
         out = subprocess.run(

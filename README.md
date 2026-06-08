@@ -4,17 +4,20 @@ A lightweight dashboard for **what's listening on your machine's ports**.
 
 A website cannot read your local ports — the browser sandbox forbids it. So
 Port Inspector splits in two: a static web dashboard that probes a tiny **local
-read-only agent** over `127.0.0.1`. If the agent is running, the page shows live
+agent** over `127.0.0.1`. If the agent is running, the page shows live
 port data. If it isn't, the same page shows how to start it.
 
 ```
   browser ──fetch──> http://127.0.0.1:8790/api/ports ──reads──> /proc/net/*
- (static site)            (local read-only agent)
+ (static site)            (local agent)
 ```
 
 Nothing leaves your machine. The agent binds loopback only and exposes JSON
-APIs — there is no command-execution endpoint. The whole agent is a single
-standard-library Python file (`site/agent.py`); there is nothing to install.
+APIs — there is no command-execution endpoint. By default it is
+inspection-only; when started with `--allow-kill`, the dashboard can send
+`SIGTERM` to a selected listener PID after you confirm the row action. The whole
+agent is a single standard-library Python file (`site/agent.py`); there is
+nothing to install.
 
 ## What it shows
 
@@ -30,7 +33,8 @@ For every TCP `LISTEN` socket and bound UDP socket:
 The dashboard summarizes total listeners, unique ports, process count, TCP and
 UDP counts, an **all-interfaces warning count**, and suggests currently-free
 dev ports. Listeners bound to `0.0.0.0` or `::` are highlighted as reachable
-from outside the machine.
+from outside the machine. When kill is enabled, rows with a resolved PID also
+show a **Kill** action.
 
 ## Running the agent
 
@@ -51,11 +55,14 @@ starts the agent for you — no terminal, no install. It:
 4. calls web2local's `/deploy`: web2local writes the agent under
    `~/.config/web2local/agents/` and — once you **approve the write + run** in
    its dialog — spawns
-   `python3 …/portscope-agent.py serve --port <agent port> --allow-origin <this origin>`.
+   `python3 …/portscope-agent.py serve --port <agent port> --allow-origin <this origin> --allow-kill`.
 
 The same card can **Stop** the agent and tail its log on failure. web2local owns
 the process (`/ps`, `/logs`, `/stop`); the dashboard never runs anything itself.
-The agent stays read-only and loopback-only — it never grows a command endpoint.
+The agent stays loopback-only and never grows a command-execution endpoint. With
+`--allow-kill`, `POST /api/kill` is limited to PIDs that still own a currently
+scanned listener, refuses the agent's own PID, and enforces the browser Origin
+allowlist on mutating requests.
 
 ### Run it yourself
 
@@ -63,12 +70,13 @@ No web2local? Download the single file and run it:
 
 ```bash
 curl -fsSL -o portscope-agent.py https://portscope.lue-app.com/agent.py
-python3 portscope-agent.py serve --port 8790 --allow-origin https://portscope.lue-app.com
+python3 portscope-agent.py serve --port 8790 --allow-origin https://portscope.lue-app.com --allow-kill
 ```
 
-Or from a clone of this repo: `python3 site/agent.py serve --port 8790`. It
-listens on `http://127.0.0.1:8790`; open the dashboard and it connects
-automatically. Stop it with Ctrl-C.
+Or from a clone of this repo:
+`python3 site/agent.py serve --port 8790 --allow-kill`. It listens on
+`http://127.0.0.1:8790`; open the dashboard and it connects automatically. Stop
+it with Ctrl-C.
 
 ### Flags
 
@@ -81,14 +89,16 @@ shell) can set everything without environment variables or a working directory:
 | `--host ADDR` | `127.0.0.1` | Bind address. Keep it on loopback. |
 | `--allow-origin CSV` | public site + localhost dev | Browser origin(s) allowed to read the agent. Repeatable; commas allowed. |
 | `--public-site URL` | `https://portscope.lue-app.com` | Deployed dashboard origin. |
+| `--allow-kill` | off | Enable `POST /api/kill` and row-level Kill buttons for resolved listener PIDs. |
 
 Each flag has a `PORTSCOPE_*` environment-variable equivalent (`PORTSCOPE_PORT`,
-`PORTSCOPE_HOST`, `PORTSCOPE_ALLOWED_ORIGINS`, `PORTSCOPE_PUBLIC_SITE`); the
-flags take precedence. Any origin allowed to read the agent can see the full
-list of what's listening while it runs — keep the allowlist tight. By default
-the agent **also** accepts any loopback origin (any local port), so local
-previews work without listing each one; set `PORTSCOPE_ALLOW_LOOPBACK_ORIGINS=0`
-to require an exact allowlist match.
+`PORTSCOPE_HOST`, `PORTSCOPE_ALLOWED_ORIGINS`, `PORTSCOPE_PUBLIC_SITE`,
+`PORTSCOPE_ALLOW_KILL`); the flags take precedence. Any origin allowed to read
+the agent can see the full list of what's listening while it runs — and, if
+kill is enabled, can request listener termination — so keep the allowlist tight.
+By default the agent **also** accepts any loopback origin (any local port), so
+local previews work without listing each one; set
+`PORTSCOPE_ALLOW_LOOPBACK_ORIGINS=0` to require an exact allowlist match.
 
 ## PID resolution and permissions
 
@@ -102,12 +112,16 @@ personal dashboard, running as your user is the safer default.
 
 ## API
 
-- `GET /api/health` → `{ ok, service: "portscope", version, public_site }`
-- `GET /api/ports` → `{ summary, listeners, free_suggestions, generated_at }`
+- `GET /api/health` → `{ ok, service: "portscope", version, public_site, capabilities }`
+- `GET /api/ports` → `{ summary, listeners, free_suggestions, generated_at, capabilities }`
+- `POST /api/kill` → `{ ok, pid, signal, process, ports }` when `--allow-kill`
+  is enabled. Body: `{ pid, port, protocol, signal? }`; `signal` defaults to
+  `SIGTERM` and may be `SIGKILL`.
 
-Only `GET`, `HEAD`, and `OPTIONS` (the latter for CORS preflight) are handled;
-every mutating method (POST/PUT/DELETE/PATCH) returns `405`. The agent is
-read-only.
+Unsupported mutating methods return `405`. `POST /api/kill` drains and closes
+the request body, verifies the Origin header for browser requests, re-scans
+`/proc` before signaling, and returns `403`/`404` for permission or stale-row
+cases.
 
 ## The web dashboard
 
@@ -135,7 +149,8 @@ python3 smoke_test.py
 ```
 
 Covers address parsing, scope classification, `/proc/net` parsing, container
-hints, free-port suggestions, a live scan, the HTTP API (CORS, Private Network
-Access preflight, read-only method rejection), the `agent.py serve` CLI, and a
+hints, free-port suggestions, guarded process termination, a live scan, the
+HTTP API (CORS, Private Network Access preflight, unsupported method rejection),
+the `agent.py serve` CLI, and a
 **drift guard** that the agent's sha256 matches the hash the dashboard pins for
 web2local's `/deploy` (so the two can never silently diverge).

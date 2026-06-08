@@ -14,7 +14,7 @@ yours; this doc gives you the contract, the constraints, and the trade-offs.
 ## Goal
 
 A user who is running **only web2local** opens the public portscope dashboard
-and clicks **Start agent**. The read-only port-scanner agent comes up, the
+and clicks **Start agent**. The local port-scanner agent comes up, the
 dashboard flips to live data, and a **Stop** button ends it. No `git clone`, no
 `install.sh`, no `~/.local/bin` launcher, no `PATH` edits, no systemd. The only
 prerequisites are: web2local running, and `python3` (3.7+) present (the agent is
@@ -59,7 +59,7 @@ Invocation (foreground process; web2local detaches/logs/stops it as it does any
 spawn):
 
 ```
-python3 <path-to>/agent.py serve --host 127.0.0.1 --port <PORT> --allow-origin <CSV-of-origins>
+python3 <path-to>/agent.py serve --host 127.0.0.1 --port <PORT> --allow-origin <CSV-of-origins> --allow-kill
 ```
 
 - Exits **0** on SIGTERM (so `/stop` is clean). Prints a one-line bind error and
@@ -67,10 +67,12 @@ python3 <path-to>/agent.py serve --host 127.0.0.1 --port <PORT> --allow-origin <
   in `/logs`, not a silent death).
 - Readiness probe: `GET http://127.0.0.1:<PORT>/api/health` →
   `{"ok":true,"service":"portscope",…}`.
-- The file is ~770 lines, stdlib-only, read-only (serves GET/HEAD/OPTIONS; 405
-  on everything else). Current SHA-256 (changes when the file changes — compute
-  at deploy time, don't hard-code):
-  `0daffac16ad86de9c8392b9a3875ee1994d997b559da43a09cd6f97eab0a074c`
+- The file is stdlib-only, loopback-only, and command-execution-free. Without
+  `--allow-kill` it is inspection-only. With `--allow-kill`, it also serves a
+  guarded `POST /api/kill` that re-scans the selected listener before signaling
+  its PID. Current SHA-256 (changes when the file changes — compute at deploy
+  time, don't hard-code):
+  `58ef33fdbceec6eca1d9097561ab1c05959125e97939ff8a3b99f806fe5cb982`
 
 ## The requirement: one new capability — "deliver, then run"
 
@@ -126,8 +128,9 @@ a page can "add itself." That is only safe because execution still requires the
 (fetch-and-run arbitrary code with no human in the loop). So: the no-install
 launch **must** go through the approval dialog, and the dialog should disclose
 *what gets fetched and run* (URL + hash), not just an argv. portscope's agent
-stays read-only and loopback-only regardless — the risk being guarded here is
-the generic "deliver + execute" power, not portscope itself.
+stays loopback-only and command-execution-free; its optional kill endpoint only
+signals PIDs that still own a currently scanned listener. The risk being
+guarded here is the generic "deliver + execute" power, not portscope itself.
 
 ## What portscope provides (so your side is easy)
 

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Port Inspector — what's listening locally</title>
-  <meta name="description" content="A dashboard for what's listening on your machine's ports. Reads a small local read-only agent over localhost; shows setup guidance when the agent isn't running." />
+  <meta name="description" content="A dashboard for what's listening on your machine's ports. Reads a small local agent over localhost; shows setup guidance when the agent isn't running." />
   <meta name="color-scheme" content="light dark" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -128,6 +128,7 @@
                   <th data-sort="user" class="sortable" data-i18n="colUser">User</th>
                   <th data-sort="command" class="sortable" data-i18n="colCommand">Command</th>
                   <th data-sort="container_id" class="sortable" data-i18n="colContainer">Container</th>
+                  <th class="col-action" data-i18n="colAction">Action</th>
                 </tr>
               </thead>
               <tbody id="ports-body"></tbody>
@@ -145,7 +146,7 @@
           <h1 data-i18n="setupTitle">Run the local agent to see your ports here.</h1>
           <p class="lead" data-i18n-html="setupLead">
             A website on its own cannot read your machine's open ports — the browser sandbox forbids it.
-            Port Inspector uses a tiny <strong>read-only</strong> agent that listens on
+            Port Inspector uses a tiny local agent that listens on
             <code id="probe-target">127.0.0.1:8790</code> and serves the port list as JSON. This page reads
             that agent directly from your browser. Start it once and this page becomes a live dashboard.
           </p>
@@ -181,14 +182,14 @@
             <div class="card-head"><span class="card-badge">⌨</span><h2 data-i18n="manualTitle">Run it yourself (no web2local)</h2></div>
             <p class="muted" data-i18n-html="manualBody">No web2local? Download the agent and run it — pure Python standard library, nothing to install. Set the <strong>Agent port</strong> above to match.</p>
             <div class="cmd"><pre><code id="cmd-manual"></code></pre><button class="copy" type="button" data-copy="cmd-manual" data-i18n="copy" aria-label="Copy command">Copy</button></div>
-            <p class="muted small" data-i18n-html="manualNote">It binds <code>127.0.0.1</code> only and is read-only — JSON, no command execution. Stop it with Ctrl-C.</p>
+            <p class="muted small" data-i18n-html="manualNote">It binds <code>127.0.0.1</code> only. With <code>--allow-kill</code>, row actions can send SIGTERM after confirmation. Stop the agent with Ctrl-C.</p>
           </article>
         </div>
       </section>
     </main>
 
     <footer class="appfoot">
-      <span data-i18n="footerText">Port Inspector · local read-only port dashboard</span>
+      <span data-i18n="footerText">Port Inspector · local port dashboard</span>
       <span id="conn-detail" class="muted"></span>
     </footer>
   </div>

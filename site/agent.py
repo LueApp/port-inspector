@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""portscope — single-file local read-only port-occupation agent.
+"""portscope — single-file local port-occupation agent.
 
 Self-contained Python standard-library agent. Reads Linux
 ``/proc/net/{tcp,tcp6,udp,udp6}`` and serves a localhost-only JSON API that the
@@ -13,10 +13,12 @@ This is the bundled equivalent of the ``portscope`` package's ``serve`` command,
 built so a supervisor (e.g. web2local) can fetch a single file and run it with
 flags alone — no PYTHONPATH, no working directory, no environment variables.
 
-Read-only by construction: only GET/HEAD/OPTIONS are served; every mutating
-method returns 405. Nothing here executes commands or writes to disk. The
-server binds 127.0.0.1 by default and only echoes CORS headers back to a
-configured browser-origin allowlist, so no data leaves the machine.
+By default the agent is inspection-only. If started with ``--allow-kill`` it
+also exposes a guarded ``POST /api/kill`` endpoint that sends SIGTERM/SIGKILL to
+a PID only after re-scanning /proc and verifying that PID still owns the
+selected listening port. The server binds 127.0.0.1 by default and only echoes
+CORS headers back to a configured browser-origin allowlist, so no data leaves
+the machine.
 """
 from __future__ import annotations
 
@@ -36,7 +38,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Iterable
 from urllib.parse import urlsplit
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,6 +60,7 @@ HTTP_PORT = 8790
 PUBLIC_SITE_URL = "https://portscope.lue-app.com"
 ALLOWED_ORIGINS: set[str] = set()
 ALLOW_LOOPBACK_ORIGINS = True
+ALLOW_KILL = False
 FREE_SUGGESTION_LIMIT = 10
 FREE_CANDIDATES: list[int] = []
 
@@ -94,7 +97,7 @@ def configure() -> None:
     """Read PORTSCOPE_* env vars into the module globals. Call once, after
     main() has translated CLI flags into those env vars."""
     global HTTP_HOST, HTTP_PORT, PUBLIC_SITE_URL, ALLOWED_ORIGINS
-    global ALLOW_LOOPBACK_ORIGINS, FREE_SUGGESTION_LIMIT, FREE_CANDIDATES
+    global ALLOW_LOOPBACK_ORIGINS, ALLOW_KILL, FREE_SUGGESTION_LIMIT, FREE_CANDIDATES
 
     # Default to loopback only. Binding to anything else would expose your
     # machine's full listening-socket inventory to the network — don't.
@@ -129,6 +132,7 @@ def configure() -> None:
     # per-port friction at no real cost. Set PORTSCOPE_ALLOW_LOOPBACK_ORIGINS=0
     # to require an exact allowlist match.
     ALLOW_LOOPBACK_ORIGINS = _truthy(_env("ALLOW_LOOPBACK_ORIGINS", "1"))
+    ALLOW_KILL = _truthy(_env("ALLOW_KILL", "0"))
 
     FREE_SUGGESTION_LIMIT = _env_int("FREE_SUGGESTION_LIMIT", 10)
     FREE_CANDIDATES = [
@@ -163,7 +167,7 @@ def origin_allowed(origin: str) -> bool:
 
 
 # =========================================================================
-# /proc socket inspection (read-only)
+# /proc socket inspection
 # -------------------------------------------------------------------------
 # 1. Parse /proc/net/{tcp,tcp6} for LISTEN sockets and /proc/net/{udp,udp6}
 #    for bound (unconnected) datagram sockets.
@@ -227,6 +231,7 @@ class Socket:
             "process": self.process,
             "command": self.command,
             "container_id": self.container_id,
+            "killable": bool(ALLOW_KILL and self.pid is not None and self.pid != os.getpid()),
         }
 
 
@@ -486,12 +491,115 @@ def scan(free_candidates: list[int], free_limit: int) -> dict:
     }
 
 
+# --- guarded process termination ------------------------------------------
+
+_SIGNALS = {
+    "TERM": signal.SIGTERM,
+    "SIGTERM": signal.SIGTERM,
+    "KILL": signal.SIGKILL,
+    "SIGKILL": signal.SIGKILL,
+}
+_SIGNAL_NAMES = {
+    signal.SIGTERM: "SIGTERM",
+    signal.SIGKILL: "SIGKILL",
+}
+
+
+def _capabilities() -> dict:
+    return {"kill_processes": bool(ALLOW_KILL)}
+
+
+def _parse_signal(value) -> tuple[int | None, str | None]:
+    if value is None:
+        return signal.SIGTERM, "SIGTERM"
+    if isinstance(value, str):
+        sig = _SIGNALS.get(value.strip().upper())
+        return (sig, _SIGNAL_NAMES.get(sig)) if sig is not None else (None, None)
+    if isinstance(value, int) and value in _SIGNAL_NAMES:
+        return value, _SIGNAL_NAMES[value]
+    return None, None
+
+
+def _matches_requested_listener(listener: dict, pid: int, port: int | None, protocol: str | None) -> bool:
+    if listener.get("pid") != pid:
+        return False
+    if port is not None and listener.get("port") != port:
+        return False
+    if protocol:
+        got = str(listener.get("protocol") or "").lower()
+        want = protocol.lower()
+        if got != want and not got.startswith(want):
+            return False
+    return True
+
+
+def kill_from_request(payload: dict) -> tuple[dict, int]:
+    if not ALLOW_KILL:
+        return {"ok": False, "code": "kill_disabled", "error": "kill is disabled"}, 403
+    try:
+        pid = int(payload.get("pid"))
+    except (TypeError, ValueError):
+        return {"ok": False, "code": "bad_pid", "error": "pid must be an integer"}, 400
+    if pid <= 1:
+        return {"ok": False, "code": "refused_pid", "error": "refusing to kill pid <= 1"}, 403
+    if pid == os.getpid():
+        return {"ok": False, "code": "refused_self", "error": "refusing to kill the portscope agent"}, 403
+
+    port = payload.get("port")
+    if port is not None:
+        try:
+            port = int(port)
+        except (TypeError, ValueError):
+            return {"ok": False, "code": "bad_port", "error": "port must be an integer"}, 400
+        if not (1 <= port <= 65535):
+            return {"ok": False, "code": "bad_port", "error": "port must be 1-65535"}, 400
+
+    protocol = payload.get("protocol")
+    if protocol is not None:
+        protocol = str(protocol).strip().lower()
+        if protocol not in ("tcp", "tcp6", "udp", "udp6"):
+            return {"ok": False, "code": "bad_protocol", "error": "protocol must be tcp/tcp6/udp/udp6"}, 400
+
+    sig, sig_name = _parse_signal(payload.get("signal"))
+    if sig is None or sig_name is None:
+        return {"ok": False, "code": "bad_signal", "error": "signal must be SIGTERM or SIGKILL"}, 400
+
+    snapshot = scan(FREE_CANDIDATES, FREE_SUGGESTION_LIMIT)
+    matches = [
+        listener for listener in snapshot.get("listeners", [])
+        if _matches_requested_listener(listener, pid, port, protocol)
+    ]
+    if not matches:
+        return {
+            "ok": False,
+            "code": "stale_listener",
+            "error": "pid no longer owns the selected listener",
+        }, 404
+
+    try:
+        os.kill(pid, sig)
+    except ProcessLookupError:
+        return {"ok": False, "code": "process_gone", "error": "process is already gone"}, 404
+    except PermissionError:
+        return {"ok": False, "code": "permission_denied", "error": "permission denied"}, 403
+    except OSError as exc:
+        return {"ok": False, "code": "kill_failed", "error": str(exc)}, 500
+
+    return {
+        "ok": True,
+        "pid": pid,
+        "signal": sig_name,
+        "process": matches[0].get("process"),
+        "ports": sorted({m.get("port") for m in matches if m.get("port") is not None}),
+    }, 200
+
+
 # =========================================================================
 # HTTP agent (localhost-only JSON)
 # -------------------------------------------------------------------------
 #   GET /api/health -> { ok, service: "portscope", version, public_site }
 #   GET /api/ports  -> { summary, listeners, free_suggestions, generated_at }
-# Only GET/HEAD/OPTIONS are handled; every mutating method returns 405.
+#   POST /api/kill -> guarded process termination, only with --allow-kill
 # =========================================================================
 
 # Minimal local fallback page served at "/". The real UI is the public static
@@ -505,7 +613,7 @@ _LOCAL_INDEX = """<!doctype html>
   a{{color:#2563eb}}
 </style>
 <h1>portscope agent is running</h1>
-<p>This is the local read-only agent (v{version}). It exposes JSON only:</p>
+<p>This is the local agent (v{version}). It exposes JSON endpoints:</p>
 <ul>
   <li><a href="/api/health">/api/health</a></li>
   <li><a href="/api/ports">/api/ports</a></li>
@@ -526,7 +634,7 @@ class Handler(BaseHTTPRequestHandler):
         origin = (self.headers.get("Origin") or "").rstrip("/")
         if origin and origin_allowed(origin):
             self.send_header("Access-Control-Allow-Origin", origin)
-            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.send_header("Access-Control-Max-Age", "600")
             self.send_header("Vary", "Origin")
@@ -561,6 +669,35 @@ class Handler(BaseHTTPRequestHandler):
                 break
             remaining -= len(chunk)
 
+    def _read_json_body(self, max_bytes: int = 8192) -> tuple[dict | None, str | None]:
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self._drain_body()
+            return None, "invalid content length"
+        if length > max_bytes:
+            self._drain_body()
+            return None, "request body too large"
+        try:
+            raw = self.rfile.read(length) if length else b""
+        except OSError:
+            return None, "could not read request body"
+        if not raw:
+            return {}, None
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None, "request body must be JSON"
+        if not isinstance(payload, dict):
+            return None, "request body must be a JSON object"
+        return payload, None
+
+    def _write_origin_allowed(self) -> bool:
+        # CORS only controls whether a browser may read a response; a malicious
+        # page can still try to send a POST. Enforce Origin on mutating routes.
+        origin = (self.headers.get("Origin") or "").rstrip("/")
+        return not origin or origin_allowed(origin)
+
     def _send_html(self, html: str, status: int = 200) -> None:
         body = html.encode("utf-8")
         self.send_response(status)
@@ -589,11 +726,13 @@ class Handler(BaseHTTPRequestHandler):
                         "service": "portscope",
                         "version": __version__,
                         "public_site": PUBLIC_SITE_URL,
+                        "capabilities": _capabilities(),
                     }
                 )
             elif path == "/api/ports":
                 payload = scan(FREE_CANDIDATES, FREE_SUGGESTION_LIMIT)
                 payload["generated_at"] = int(time.time())
+                payload["capabilities"] = _capabilities()
                 self._send_json(payload)
             elif path == "/":
                 self._send_html(
@@ -614,6 +753,40 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:
         self.do_GET()
 
+    def do_POST(self) -> None:
+        path = self.path.split("?", 1)[0].rstrip("/") or "/"
+        if path != "/api/kill":
+            self._reject()
+            return
+
+        self.close_connection = True
+        try:
+            if not self._write_origin_allowed():
+                self._drain_body()
+                self._send_json(
+                    {"ok": False, "code": "origin_rejected", "error": "origin is not allowed"},
+                    status=403,
+                    extra_headers={"Connection": "close"},
+                )
+                return
+            payload, err = self._read_json_body()
+            if err is not None or payload is None:
+                self._send_json(
+                    {"ok": False, "code": "bad_json", "error": err or "bad JSON body"},
+                    status=400,
+                    extra_headers={"Connection": "close"},
+                )
+                return
+            body, status = kill_from_request(payload)
+            self._send_json(body, status=status, extra_headers={"Connection": "close"})
+        except Exception:
+            log.exception("error handling POST %s", path)
+            self._send_json(
+                {"ok": False, "code": "internal_error", "error": "internal error"},
+                status=500,
+                extra_headers={"Connection": "close"},
+            )
+
     def handle(self) -> None:
         # Browsers poll on keep-alive connections and reset idle ones; a client
         # may also abort an in-flight fetch. Both surface as a connection error
@@ -626,17 +799,17 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
 
     def _reject(self) -> None:
-        # Read-only agent: refuse every mutating method. Drain the body and
-        # close the connection so an unread body can't desync a kept-alive one.
+        # Refuse unsupported mutating methods. Drain the body and close the
+        # connection so an unread body can't desync a kept-alive one.
         self._drain_body()
         self.close_connection = True
         self._send_json(
-            {"error": "method not allowed (read-only agent)"},
+            {"error": "method not allowed"},
             status=405,
             extra_headers={"Allow": "GET, HEAD, OPTIONS", "Connection": "close"},
         )
 
-    do_POST = do_PUT = do_DELETE = do_PATCH = _reject
+    do_PUT = do_DELETE = do_PATCH = _reject
 
     def log_message(self, fmt: str, *args) -> None:  # quieter default logging
         log.info("%s - %s", self.address_string(), fmt % args)
@@ -671,10 +844,11 @@ def run_server() -> int:
     signal.signal(signal.SIGINT, _shutdown)
 
     log.info(
-        "portscope %s listening on http://%s:%d (allowed origins: %s%s)",
+        "portscope %s listening on http://%s:%d (kill: %s; allowed origins: %s%s)",
         __version__,
         HTTP_HOST,
         HTTP_PORT,
+        "enabled" if ALLOW_KILL else "disabled",
         ", ".join(sorted(ALLOWED_ORIGINS)) or "(none)",
         " + any loopback origin" if ALLOW_LOOPBACK_ORIGINS else "",
     )
@@ -715,18 +889,22 @@ def _add_serve_args(p: argparse.ArgumentParser) -> None:
         "--public-site", metavar="URL",
         help="deployed dashboard origin (sets PORTSCOPE_PUBLIC_SITE).",
     )
+    p.add_argument(
+        "--allow-kill", action="store_true",
+        help="enable POST /api/kill so the dashboard can terminate selected listener PIDs.",
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="agent.py",
-        description="portscope — local read-only port-occupation agent (single file).",
+        description="portscope — local port-occupation agent (single file).",
     )
     p.add_argument("--version", action="version", version=f"portscope {__version__}")
     sub = p.add_subparsers(dest="cmd")
     serve = sub.add_parser(
         "serve",
-        help="run the read-only agent in the foreground (default).",
+        help="run the local agent in the foreground (default).",
         description="Run the portscope agent in the foreground. Accepts flags so a "
                     "supervisor can configure it without environment variables.",
     )
@@ -744,6 +922,8 @@ def _serve(args: argparse.Namespace) -> int:
         os.environ["PORTSCOPE_HOST"] = args.host
     if args.public_site:
         os.environ["PORTSCOPE_PUBLIC_SITE"] = args.public_site
+    if args.allow_kill:
+        os.environ["PORTSCOPE_ALLOW_KILL"] = "1"
 
     # --allow-origin is repeatable and each value may itself be comma-separated.
     # Flatten, de-dupe (preserving order), and set the allowlist override.

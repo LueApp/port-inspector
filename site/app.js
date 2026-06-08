@@ -1,4 +1,4 @@
-/* portscope dashboard — talks to the local read-only agent over localhost. */
+/* portscope dashboard — talks to the local agent over localhost. */
 (() => {
   "use strict";
 
@@ -15,7 +15,7 @@
   // mismatch. smoke_test.py enforces this so the two can't silently drift.
   const AGENT_URL = "agent.py";                 // served from this origin
   const AGENT_FILENAME = "portscope-agent.py";  // on-disk name web2local writes
-  const AGENT_SHA256 = "cbe4e0bb0058e3a9e1a1c1f2965657fa7c3df572db9b43a6afea16f493ace2cd";
+  const AGENT_SHA256 = "58ef33fdbceec6eca1d9097561ab1c05959125e97939ff8a3b99f806fe5cb982";
 
   // ---------- translations ----------
   const translations = {
@@ -53,12 +53,23 @@
       colUser: "User",
       colCommand: "Command",
       colContainer: "Container",
+      colAction: "Action",
+      kill: "Kill",
+      killTitle: "Send SIGTERM to PID {pid}",
+      killConfirm: "Send SIGTERM to PID {pid} ({process}) on port {port}?",
+      killWorking: "Killing…",
+      killDone: "Sent {signal} to PID {pid}",
+      killDenied: "No permission to kill PID {pid}.",
+      killStale: "PID {pid} no longer owns that listener; refreshed.",
+      killSelf: "Refused to kill the agent.",
+      killDisabled: "Kill is disabled for this agent.",
+      killError: "Kill failed: {msg}",
       tableEmpty: "No sockets match the current filters.",
       setupEyebrow: "Local service not detected",
       setupTitle: "Run the local agent to see your ports here.",
       setupLead:
         "A website on its own cannot read your machine's open ports — the browser sandbox forbids it. " +
-        "Port Inspector uses a tiny <strong>read-only</strong> agent that listens on " +
+        "Port Inspector uses a tiny local agent that listens on " +
         '<code id="probe-target">127.0.0.1:8790</code> and serves the port list as JSON. This page reads ' +
         "that agent directly from your browser. Start it once and this page becomes a live dashboard.",
       setupRetry: "I started it — retry",
@@ -68,10 +79,10 @@
         "No web2local? Download the agent and run it — pure Python standard library, nothing to install. " +
         "Set the <strong>Agent port</strong> above to match.",
       manualNote:
-        "It binds <code>127.0.0.1</code> only and is read-only — JSON, no command execution. Stop it with Ctrl-C.",
+        "It binds <code>127.0.0.1</code> only. With <code>--allow-kill</code>, row actions can send SIGTERM after confirmation. Stop the agent with Ctrl-C.",
       copy: "Copy",
       copied: "Copied",
-      footerText: "Port Inspector · local read-only port dashboard",
+      footerText: "Port Inspector · local port dashboard",
       badgeConnected: "connected · :{port}",
       badgeOffline: "no agent on {port}",
       badgePortRange: "port must be 1–65535",
@@ -104,7 +115,7 @@
       w2lAbsent: "not detected",
       w2lRunningChip: "agent running",
       w2lHintIdle:
-        "web2local writes + runs the read-only agent and tracks it; Stop ends it. You approve the write + run first.",
+        "web2local writes + runs the agent and tracks it; Stop ends it. You approve the write + run first.",
       w2lHintAbsent:
         "Not detected on port {port}. Start web2local, or set its port above and click Check.",
       w2lAlreadyRunning: "An agent is already running via web2local (pid {pid}).",
@@ -160,12 +171,23 @@
       colUser: "用户",
       colCommand: "命令",
       colContainer: "容器",
+      colAction: "操作",
+      kill: "结束",
+      killTitle: "向 PID {pid} 发送 SIGTERM",
+      killConfirm: "向端口 {port} 的 PID {pid}（{process}）发送 SIGTERM？",
+      killWorking: "结束中…",
+      killDone: "已向 PID {pid} 发送 {signal}",
+      killDenied: "没有权限结束 PID {pid}。",
+      killStale: "PID {pid} 已不再占用该监听项；已刷新。",
+      killSelf: "已拒绝结束当前代理。",
+      killDisabled: "当前代理未启用结束进程。",
+      killError: "结束失败：{msg}",
       tableEmpty: "没有符合当前筛选的套接字。",
       setupEyebrow: "未检测到本地服务",
       setupTitle: "运行本地代理，即可在此查看端口。",
       setupLead:
         "网页自身无法读取本机的开放端口——浏览器沙箱禁止这样做。Port Inspector 提供一个极小的" +
-        "<strong>只读</strong>代理，监听在 " +
+        "本地代理，监听在 " +
         '<code id="probe-target">127.0.0.1:8790</code>，并以 JSON 提供端口列表。本页面直接从你的浏览器' +
         "读取该代理。启动一次后，本页面即成为实时面板。",
       setupRetry: "已启动，重试",
@@ -175,10 +197,10 @@
         "没有 web2local？下载代理并运行——纯 Python 标准库，无需安装。请将上方的" +
         "<strong>代理端口</strong>设为一致。",
       manualNote:
-        "它仅绑定 <code>127.0.0.1</code>，且为只读——只提供 JSON，不执行任何命令。按 Ctrl-C 停止。",
+        "它仅绑定 <code>127.0.0.1</code>。使用 <code>--allow-kill</code> 时，行操作可在确认后发送 SIGTERM。按 Ctrl-C 停止代理。",
       copy: "复制",
       copied: "已复制",
-      footerText: "Port Inspector · 本地只读端口面板",
+      footerText: "Port Inspector · 本地端口面板",
       badgeConnected: "已连接 · :{port}",
       badgeOffline: "{port} 无代理",
       badgePortRange: "端口须为 1–65535",
@@ -209,7 +231,7 @@
       w2lDetected: "已检测到",
       w2lAbsent: "未检测到",
       w2lRunningChip: "代理运行中",
-      w2lHintIdle: "web2local 会写入并运行这个只读代理并进行管理；点击停止即可结束。运行前需先确认写入与运行。",
+      w2lHintIdle: "web2local 会写入并运行这个代理并进行管理；点击停止即可结束。运行前需先确认写入与运行。",
       w2lHintAbsent: "未在端口 {port} 检测到。请启动 web2local，或在上方填写其端口后点击检查。",
       w2lAlreadyRunning: "已有代理通过 web2local 运行（pid {pid}）。",
       w2lApprove: "请在 web2local 的对话框中确认写入并运行代理…",
@@ -282,6 +304,7 @@
   let timer = null;
   let mode = "checking"; // checking | online | offline
   let rows = [];
+  let canKill = false;
   let sortKey = "port";
   let sortDir = 1; // 1 asc, -1 desc
   let w2lPort = readW2lPort();
@@ -357,6 +380,30 @@
       clearTimeout(tm);
     }
   }
+  async function apiPost(path, body) {
+    const ctrl = new AbortController();
+    const tm = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(base() + path, {
+        method: "POST",
+        mode: "cors",
+        signal: ctrl.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {}),
+      });
+      let data = {};
+      try { data = await res.json(); } catch { /* tolerate non-JSON errors */ }
+      if (!res.ok) {
+        const err = new Error(data.error || `${res.status} ${res.statusText}`);
+        err.code = data.code || "";
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    } finally {
+      clearTimeout(tm);
+    }
+  }
 
   // ---------- view switching ----------
   function setBadge(state, text) {
@@ -384,6 +431,7 @@
   function setOffline() {
     const was = mode;
     mode = "offline";
+    canKill = false;
     setBadge("offline", t("badgeOffline", { port }));
     showDashboard(false);
     syncSetupCommands();
@@ -484,6 +532,12 @@
     const pid = r.pid != null ? `<td class="num">${esc(r.pid)}</td>` : `<td class="num dash">—</td>`;
     const cid = r.container_id ? `<td class="cid">${esc(r.container_id)}</td>` : `<td class="dash">—</td>`;
     const user = r.user ? `<td>${esc(r.user)}</td>` : `<td class="dash">—</td>`;
+    const action = (canKill && r.killable && r.pid != null)
+      ? `<td class="action-cell"><button class="row-kill" type="button"
+           data-pid="${esc(r.pid)}" data-port="${esc(r.port)}" data-protocol="${esc(r.protocol)}"
+           data-process="${esc(r.process || "")}"
+           title="${esc(t("killTitle", { pid: r.pid }))}">${esc(t("kill"))}</button></td>`
+      : `<td class="action-cell dash">—</td>`;
     return `<tr class="row${exposedTag}">
       <td class="status-cell">${dot}</td>
       <td>${proto}</td>
@@ -495,6 +549,7 @@
       ${user}
       ${cmd}
       ${cid}
+      ${action}
     </tr>`;
   }
 
@@ -507,11 +562,50 @@
     });
   }
 
+  function killErrorText(err, pid) {
+    if (err.code === "permission_denied") return t("killDenied", { pid });
+    if (err.code === "stale_listener" || err.code === "process_gone") return t("killStale", { pid });
+    if (err.code === "refused_self" || err.code === "refused_pid") return t("killSelf");
+    if (err.code === "kill_disabled") return t("killDisabled");
+    return t("killError", { msg: err.message || String(err) });
+  }
+
+  async function killListener(btn) {
+    const pid = Number(btn.dataset.pid);
+    const rowPort = Number(btn.dataset.port);
+    const protocol = btn.dataset.protocol || "";
+    const procName = btn.dataset.process || `PID ${pid}`;
+    if (!Number.isInteger(pid) || !Number.isInteger(rowPort)) return;
+    if (!window.confirm(t("killConfirm", { pid, port: rowPort, process: procName }))) return;
+
+    btn.disabled = true;
+    btn.textContent = t("killWorking");
+    try {
+      const data = await apiPost("/api/kill", {
+        pid,
+        port: rowPort,
+        protocol,
+        signal: "SIGTERM",
+      });
+      await refresh();
+      els.connDetail.textContent = t("killDone", { pid, signal: data.signal || "SIGTERM" });
+    } catch (err) {
+      try { await refresh(); } catch { /* keep the error visible if refresh also failed */ }
+      els.connDetail.textContent = killErrorText(err, pid);
+    } finally {
+      if (document.body.contains(btn)) {
+        btn.disabled = false;
+        btn.textContent = t("kill");
+      }
+    }
+  }
+
   // ---------- data flow ----------
   async function refresh() {
     try {
       const data = await api("/api/ports");
       rows = Array.isArray(data.listeners) ? data.listeners : [];
+      canKill = !!data.capabilities?.kill_processes;
       renderStats(data.summary || {}, data.free_suggestions || []);
       applyView();
       const unresolved = data.summary?.unresolved_pid_count || 0;
@@ -531,6 +625,7 @@
     try {
       const health = await api("/api/health");
       if (!health || health.service !== "portscope") throw new Error("unexpected service");
+      canKill = !!health.capabilities?.kill_processes;
       await refresh();
       if (autoRefresh) startAuto();
     } catch (err) {
@@ -556,7 +651,7 @@
     if (els.cmdManual) {
       els.cmdManual.textContent =
         `curl -fsSL -o ${AGENT_FILENAME} ${origin}/${AGENT_URL}\n` +
-        `python3 ${AGENT_FILENAME} serve --port ${port} --allow-origin ${origin}`;
+        `python3 ${AGENT_FILENAME} serve --port ${port} --allow-origin ${origin} --allow-kill`;
     }
   }
 
@@ -567,7 +662,7 @@
   // origin, add this origin to web2local's graylist (its ungated config
   // endpoint), POST /deploy {source, sha256, …} so web2local writes the file and
   // — after the user approves the write + run — spawns it, then poll until the
-  // agent answers. The agent stays read-only; web2local owns the process
+  // agent answers. web2local owns the agent process
   // (/ps, /logs, /stop). The dashboard never runs anything itself.
   function readW2lPort() {
     const stored = Number(localStorage.getItem(W2L_PORT_KEY));
@@ -771,7 +866,7 @@
       await w2lPostJson("/config/graylist", { origin: window.location.origin });
       // 3. web2local writes the file, then spawns `python3 <file> serve …`.
       const args = ["serve", "--host", "127.0.0.1", "--port", String(port),
-                    "--allow-origin", buildAllowedOrigins()];
+                    "--allow-origin", buildAllowedOrigins(), "--allow-kill"];
       // Long timeout, above web2local's ~135s approval cap, so a slow (or queued)
       // approval isn't aborted out from under the user.
       const res = await w2lPostJson("/deploy", {
@@ -887,6 +982,11 @@
   });
   [els.filterProto, els.filterScope, els.filterExposed].forEach((el) => {
     el.addEventListener("change", applyView);
+  });
+  els.body.addEventListener("click", (e) => {
+    const target = e.target instanceof Element ? e.target : e.target.parentElement;
+    const btn = target?.closest(".row-kill");
+    if (btn) killListener(btn);
   });
   document.querySelectorAll("th.sortable").forEach((th) => {
     th.addEventListener("click", () => {
