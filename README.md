@@ -1,9 +1,9 @@
-# portscope
+# Port Inspector
 
 A lightweight dashboard for **what's listening on your machine's ports**.
 
 A website cannot read your local ports — the browser sandbox forbids it. So
-portscope splits in two: a static web dashboard that probes a tiny **local
+Port Inspector splits in two: a static web dashboard that probes a tiny **local
 read-only agent** over `127.0.0.1`. If the agent is running, the page shows live
 port data. If it isn't, the same page shows how to start it.
 
